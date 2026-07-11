@@ -9,6 +9,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// BuildInfo carries the values stamped into the binary at link time by the
+// release build (goreleaser's -X main.version/commit/date). Commit and Date
+// are empty in plain "go build" / Makefile builds, and the display string
+// omits them then.
+type BuildInfo struct {
+	Version string
+	Commit  string
+	Date    string
+}
+
+// String renders "0.1.0" for dev builds and
+// "0.1.0 (commit abc1234..., built 2026-07-11T14:49:04Z)" for stamped ones.
+// The bare Version stays the first token so `nsmcp version | awk '{print $2}'`
+// always yields clean semver.
+func (b BuildInfo) String() string {
+	if b.Commit == "" {
+		return b.Version
+	}
+	return fmt.Sprintf("%s (commit %s, built %s)", b.Version, b.Commit, b.Date)
+}
+
 // rootOptions holds the persistent, global flag values plus the version
 // stamped into the binary. The flags are bound once on the root command;
 // because Cobra shares persistent flags by reference with every subcommand,
@@ -25,8 +46,11 @@ type rootOptions struct {
 // NewRootCmd builds the full command tree. main() executes it, and tests can
 // execute it in-process with injected args (SetArgs) and captured output
 // (SetOut/SetErr).
-func NewRootCmd(version string) *cobra.Command {
-	opts := &rootOptions{version: version}
+func NewRootCmd(build BuildInfo) *cobra.Command {
+	// opts.version stays the bare semver: it flows into the MCP server
+	// identity, the serve banner, and User-Agent strings, where the
+	// parenthetical build metadata would be noise (or break parsers).
+	opts := &rootOptions{version: build.Version}
 
 	root := &cobra.Command{
 		Use:   "nsmcp",
@@ -46,7 +70,7 @@ Environment:
 
 Authenticate with "nsmcp login", or mint a token at
 https://app.nowsecure.com/account#token.`,
-		Version: version,
+		Version: build.String(),
 		// No subcommand => run the stdio server (preserves the old default).
 		// The --http flags live on the serve subcommand only.
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -68,18 +92,18 @@ https://app.nowsecure.com/account#token.`,
 	pf.BoolVar(&opts.platform, "platform", true, "expose DevSecOps/Platform tools")
 	pf.BoolVar(&opts.mari, "mari", true, "expose MARI/Risk-Intelligence tools")
 
-	root.AddCommand(newServeCmd(opts), newProfileCmd(opts), newVersionCmd(version),
+	root.AddCommand(newServeCmd(opts), newProfileCmd(opts), newVersionCmd(build),
 		newLoginCmd(opts), newLogoutCmd(opts), newWhoamiCmd(opts))
 	return root
 }
 
-func newVersionCmd(version string) *cobra.Command {
+func newVersionCmd(build BuildInfo) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the nsmcp version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "nsmcp", version)
+			fmt.Fprintln(cmd.OutOrStdout(), "nsmcp", build.String())
 			return nil
 		},
 	}

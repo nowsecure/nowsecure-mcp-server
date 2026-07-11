@@ -1,5 +1,6 @@
 # build output
 /nsmcp
+dist/
 
 # local secrets / direnv
 .envrc

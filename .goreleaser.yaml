@@ -1,0 +1,50 @@
+version: 2
+
+project_name: nsmcp
+
+builds:
+  - main: ./cmd/nsmcp
+    binary: nsmcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  header: |
+    nsmcp is the NowSecure MCP server and CLI, exposing read-only tools for
+    the NowSecure Platform and MARI (Mobile App Risk Intelligence) over the
+    Model Context Protocol.
+  footer: |
+    > **macOS:** binaries are unsigned; if Gatekeeper blocks a downloaded
+    > binary, clear the quarantine flag:
+    > `xattr -d com.apple.quarantine ./nsmcp`

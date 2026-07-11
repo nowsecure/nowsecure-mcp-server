@@ -20,7 +20,7 @@ const testVersion = "0.0.0-test"
 // call or before the blocking stdio serve loop.
 func runCLI(t *testing.T, args ...string) (root *cobra.Command, stdout, stderr string, err error) {
 	t.Helper()
-	root = NewRootCmd(testVersion)
+	root = NewRootCmd(BuildInfo{Version: testVersion})
 	var out, errBuf bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errBuf)
@@ -137,6 +137,21 @@ func TestVersion(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stdout); got != "nsmcp "+testVersion {
 		t.Fatalf("--version output = %q, want %q", got, "nsmcp "+testVersion)
+	}
+
+	// A release build stamps commit/date; they render parenthetically after
+	// the bare version, which must stay the second token (parseable semver).
+	stamped := BuildInfo{Version: testVersion, Commit: "abc1234", Date: "2026-07-11T00:00:00Z"}
+	root := NewRootCmd(stamped)
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"version"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("stamped version command errored: %v", err)
+	}
+	want := "nsmcp " + testVersion + " (commit abc1234, built 2026-07-11T00:00:00Z)"
+	if got := strings.TrimSpace(out.String()); got != want {
+		t.Fatalf("stamped version output = %q, want %q", got, want)
 	}
 }
 

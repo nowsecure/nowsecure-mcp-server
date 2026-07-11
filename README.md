@@ -83,15 +83,20 @@ To reduce risk:
 
 ## Quick start
 
-1. Build the binary (no hosted module path or release binaries yet — see
-   [Build & run](#build--run)):
+1. Download a binary for your platform from the
+   [releases page](https://github.com/nowsecure/nowsecure-mcp-server/releases),
+   or build from source (see [Build & run](#build--run)):
 
    ```bash
-   git clone <this-repo> && cd nsmcp
+   git clone git@github.com:nowsecure/nowsecure-mcp-server.git && cd nowsecure-mcp-server
    make build   # -> ./nsmcp
    ```
 
    Put `./nsmcp` on your `PATH`, or use an absolute path in client configs below.
+
+   > **macOS:** release binaries are unsigned; if Gatekeeper blocks a
+   > downloaded binary, clear the quarantine flag:
+   > `xattr -d com.apple.quarantine ./nsmcp`
 
 2. Get credentials:
 
@@ -372,8 +377,10 @@ make build           # -> ./nsmcp
 ```
 
 `go install` isn't available yet — this module has no hosted module path, so
+download a prebuilt binary from the
+[releases page](https://github.com/nowsecure/nowsecure-mcp-server/releases) or
 build from a clone (`git clone` + `make build`) as shown in
-[Quick start](#quick-start). GitHub releases and Homebrew are future work.
+[Quick start](#quick-start). Homebrew is future work.
 
 ## Development
 

@@ -31,12 +31,18 @@ import (
 	"nsmcp/internal/cli"
 )
 
-// version is a var, not a const, so releases can override it at link time:
-// go build -ldflags "-X main.version=v0.2.0" (the Makefile passes VERSION).
-var version = "0.1.0"
+// These are vars, not consts, so releases can override them at link time.
+// GoReleaser stamps all three (-X main.version/commit/date); the Makefile
+// stamps only VERSION, leaving commit/date empty for dev builds.
+var (
+	version = "0.1.0"
+	commit  = ""
+	date    = ""
+)
 
 func main() {
-	if err := cli.NewRootCmd(version).Execute(); err != nil {
+	build := cli.BuildInfo{Version: version, Commit: commit, Date: date}
+	if err := cli.NewRootCmd(build).Execute(); err != nil {
 		// Cobra has already printed the error (and usage where appropriate).
 		os.Exit(1)
 	}
