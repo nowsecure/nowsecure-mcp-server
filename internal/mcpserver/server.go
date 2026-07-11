@@ -128,7 +128,7 @@ func instructions(cfg *config.Config) string {
 			"Platform scores are 0-100 where HIGHER is better.\n")
 	}
 	if cfg.EnableMARI {
-		b.WriteString("Third-party vetting: list_mari_apps to find the app and its assessment_ref, then get_mari_assessment. expand sections are heavy — request only what you need; finding rows omit short_description by default (check_ids / include_descriptions pull it back). " +
+		b.WriteString("Third-party vetting: list_mari_apps to find the app and its assessment_ref, then get_mari_assessment. Its default is a compact risk card (scores, per-category breakdown, severity counts) with no finding rows — pull rows with min_severity or limit, per-finding deep-dive prose with check_ids, and expand sections only when needed (they are heavy). " +
 			"MARI risk_score is 0-100 where HIGHER is worse — the opposite polarity of Platform scores.\n")
 	}
 	if cfg.EnablePlatform && cfg.EnableMARI {

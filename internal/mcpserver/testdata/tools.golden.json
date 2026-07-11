@@ -506,7 +506,7 @@
   },
   {
     "name": "get_mari_assessment",
-    "description": "Get the risk profile for one third-party app by its MARI assessment ref: title/package/platform identity (always populated), overall risk score/rating/category, NowSecure risk, findings summary, and a compact list of findings — upstream reports only the findings the app is affected by (the summary counts both affected and checked). risk_score is 0-100 where HIGHER is worse. Two score families: risk_* reflects any org-specific score override; nowsecure_risk_* is NowSecure's unmodified computed risk — identical unless your org overrode the score. Finding rows omit short_description prose by default — pull it back with check_ids=[...] for specific findings or include_descriptions=true for every row. Use expand to opt into heavier sections (permissions, trackingDomains, networkConnections, librariesAndSdks, aiUsage, iosMetadata, appInfo) for a deeper due-diligence report; expanded librariesAndSdks is shaped down to its summary plus CVE-bearing components only.",
+    "description": "Get the risk profile for one third-party app by its MARI assessment ref. The default response is a compact risk card: title/package/platform identity, overall risk score/rating/category, NowSecure risk, per-category risk scores and impact breakdown, and summary.counts of affected findings by severity — finding rows themselves are omitted (findings_omitted reports how many; upstream reports only findings the app is affected by, the summary counts both affected and checked). risk_score is 0-100 where HIGHER is worse. Two score families: risk_* reflects any org-specific score override; nowsecure_risk_* is NowSecure's unmodified computed risk — identical unless your org overrode the score. Pull finding rows with min_severity (info returns every row, most severe first) or limit (top-N most severe); rows carry check_id, title, categories, severity, and cvss_score or rating. check_ids=[...] is the per-finding deep-dive: full short_description, description, business_impact, and regulations (GDPR/HIPAA/PCI/OWASP/CWE/... mappings with links). include_descriptions=true adds short_description to every returned row. Use expand to opt into heavier sections (permissions, trackingDomains, networkConnections, librariesAndSdks, aiUsage, iosMetadata, appInfo) for a deeper due-diligence report; expanded librariesAndSdks is shaped down to its summary plus CVE-bearing components only.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -515,7 +515,7 @@
           "type": "string"
         },
         "check_ids": {
-          "description": "only return these findings (check_id values), each with its full short_description — the on-demand deep-dive",
+          "description": "only return these findings (check_id values), each with its full prose: short_description, description, business_impact, regulations — the on-demand deep-dive",
           "items": {
             "type": "string"
           },
@@ -535,8 +535,16 @@
           ]
         },
         "include_descriptions": {
-          "description": "include short_description on every finding row (default false; prefer check_ids for specific findings)",
+          "description": "include short_description on every returned finding row; on its own returns every row (default false; prefer check_ids for specific findings)",
           "type": "boolean"
+        },
+        "limit": {
+          "description": "max finding rows to return, most severe kept (summary.counts still covers the full report)",
+          "type": "integer"
+        },
+        "min_severity": {
+          "description": "return finding rows at this severity or higher: info, warn, low, medium, high, critical (info returns every row; default returns none — summary.counts still covers them)",
+          "type": "string"
         }
       },
       "required": [
@@ -550,6 +558,13 @@
         "assessment_ref": {
           "type": "string"
         },
+        "category_impact_breakdown": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "each finding category's percentage contribution to the overall risk score; zero-impact categories omitted",
+          "type": "object"
+        },
         "created_at": {
           "type": "string"
         },
@@ -559,11 +574,20 @@
           "type": "object"
         },
         "findings": {
+          "description": "empty on the default risk card; min_severity/limit/check_ids/include_descriptions pull rows, most severe first",
           "items": {
             "additionalProperties": false,
             "properties": {
               "affected": {
                 "type": "boolean"
+              },
+              "analysis_type": {
+                "description": "static or dynamic",
+                "type": "string"
+              },
+              "business_impact": {
+                "description": "business impact prose (check_ids deep-dive only)",
+                "type": "string"
               },
               "categories": {
                 "items": {
@@ -579,6 +603,51 @@
               },
               "cvss_score": {
                 "type": "number"
+              },
+              "description": {
+                "description": "full finding description prose (check_ids deep-dive only)",
+                "type": "string"
+              },
+              "rating": {
+                "description": "0-10 NowSecure rating (higher is worse) for risk findings not scored by CVSS; at most one of rating/cvss_score is set",
+                "type": "number"
+              },
+              "regulations": {
+                "description": "compliance/standard mappings — GDPR, HIPAA, PCI, OWASP, CWE, ... (check_ids deep-dive only)",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "links": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "title": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
               },
               "severity": {
                 "type": "string"
@@ -602,6 +671,10 @@
             "array"
           ]
         },
+        "findings_omitted": {
+          "description": "reported findings not returned in this response; pass min_severity (info returns all), limit, or check_ids to pull rows",
+          "type": "integer"
+        },
         "nowsecure_risk_category": {
           "type": "string"
         },
@@ -610,6 +683,13 @@
         },
         "nowsecure_risk_score": {
           "type": "number"
+        },
+        "nowsecure_risk_scores_by_category": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "NowSecure risk score (0-100, higher is worse) per finding category — where the risk concentrates; zero-score categories omitted",
+          "type": "object"
         },
         "package": {
           "type": "string"
@@ -632,6 +712,48 @@
         "summary": {
           "additionalProperties": false,
           "properties": {
+            "counts": {
+              "additionalProperties": false,
+              "description": "affected findings by severity across the full report (unaffected by min_severity/limit/check_ids)",
+              "properties": {
+                "artifacts": {
+                  "type": "integer"
+                },
+                "critical": {
+                  "type": "integer"
+                },
+                "high": {
+                  "type": "integer"
+                },
+                "info": {
+                  "type": "integer"
+                },
+                "low": {
+                  "type": "integer"
+                },
+                "medium": {
+                  "type": "integer"
+                },
+                "pass": {
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
+                },
+                "warn": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "critical",
+                "high",
+                "medium",
+                "low",
+                "warn",
+                "info"
+              ],
+              "type": "object"
+            },
             "total_findings_affected": {
               "type": "integer"
             },
@@ -641,7 +763,8 @@
           },
           "required": [
             "total_findings_affected",
-            "total_findings_checked"
+            "total_findings_checked",
+            "counts"
           ],
           "type": "object"
         },

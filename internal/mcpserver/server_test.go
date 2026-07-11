@@ -278,17 +278,24 @@ func TestGetMARIAssessment_ExpandStructuredOutput(t *testing.T) {
 	}
 }
 
-func TestGetMARIAssessment_FindingsPassThrough(t *testing.T) {
+// TestGetMARIAssessment_ProgressiveDisclosure walks the tool's disclosure
+// ladder end-to-end: risk-card default (no rows, severity counts, category
+// breakdown, findings_omitted), min_severity rows (severity-sorted, no
+// prose), include_descriptions (short prose on every row), and the check_ids
+// deep-dive (full prose tier).
+func TestGetMARIAssessment_ProgressiveDisclosure(t *testing.T) {
 	cfg := &config.Config{
 		Token:      "test-token",
 		EnableMARI: true,
 		BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{
 				"createdAt":"2024-01-01","riskScore":40,"riskRating":"C","riskCategory":"MEDIUM",
-				"summaryInfo":{"totalFindingsAffected":1,"totalFindingsChecked":2},
+				"nowSecureRiskScoresByFindingCategory":{"Storage":80.1,"Endpoint":0},
+				"summaryInfo":{"totalFindingsAffected":2,"totalFindingsChecked":9},
 				"findings":[
-					{"checkId":"aff","title":"Affected","affected":true,"severity":"high","cvssScore":7.1,"shortDescription":"long prose"},
-					{"checkId":"clean","title":"Not affected","affected":false,"severity":"low"}
+					{"checkId":"lo","title":"Low","affected":true,"severity":"low","shortDescription":"lo short"},
+					{"checkId":"hi","title":"High","affected":true,"severity":"high","cvssScore":7.1,"shortDescription":"hi short","description":"hi full","businessImpact":"hi impact","analysisType":"static",
+						"regulations":[{"label":"GDPR","links":[{"title":"Art. 32","url":"https://gdpr.example/32"}]}]}
 				]
 			}`))
 		}),
@@ -296,61 +303,103 @@ func TestGetMARIAssessment_FindingsPassThrough(t *testing.T) {
 	cs := session(t, cfg)
 	ctx := t.Context()
 
-	firstDescription := func(res *mcp.CallToolResult) string {
-		m := structured(t, res)
-		rows, _ := m["findings"].([]any)
-		if len(rows) == 0 {
-			return ""
+	call := func(args map[string]any) map[string]any {
+		t.Helper()
+		args["assessment_ref"] = "ri-1"
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "get_mari_assessment", Arguments: args})
+		if err != nil {
+			t.Fatalf("CallTool: %v", err)
 		}
-		row, _ := rows[0].(map[string]any)
-		s, _ := row["short_description"].(string)
-		return s
+		if res.IsError {
+			t.Fatalf("result IsError: %s", contentText(res))
+		}
+		return structured(t, res)
+	}
+	rows := func(m map[string]any) []map[string]any {
+		t.Helper()
+		raw, ok := m["findings"].([]any)
+		if !ok {
+			t.Fatalf("findings is %T, want array", m["findings"])
+		}
+		out := make([]map[string]any, len(raw))
+		for i, r := range raw {
+			out[i], _ = r.(map[string]any)
+		}
+		return out
 	}
 
-	// Default: every reported finding comes through, minus description prose.
+	// Default: a risk card — counts and breakdowns, no finding rows.
+	m := call(map[string]any{})
+	if got := rows(m); len(got) != 0 {
+		t.Errorf("default findings = %v, want none", got)
+	}
+	if m["findings_omitted"] != float64(2) {
+		t.Errorf("findings_omitted = %v, want 2", m["findings_omitted"])
+	}
+	summary, _ := m["summary"].(map[string]any)
+	counts, _ := summary["counts"].(map[string]any)
+	if counts["high"] != float64(1) || counts["low"] != float64(1) {
+		t.Errorf("summary.counts = %v, want high/low = 1", counts)
+	}
+	scores, _ := m["nowsecure_risk_scores_by_category"].(map[string]any)
+	if scores["Storage"] != float64(80.1) || len(scores) != 1 {
+		t.Errorf("category scores = %v, want only Storage 80.1 (zeros dropped)", scores)
+	}
+
+	// min_severity=info returns every row, most severe first, without prose.
+	m = call(map[string]any{"min_severity": "info"})
+	got := rows(m)
+	if len(got) != 2 || got[0]["check_id"] != "hi" || got[1]["check_id"] != "lo" {
+		t.Fatalf("min_severity=info rows = %v, want [hi lo] severity-sorted", got)
+	}
+	if _, ok := got[0]["short_description"]; ok {
+		t.Errorf("plain rows must omit prose: %v", got[0])
+	}
+	if m["findings_omitted"] != nil {
+		t.Errorf("findings_omitted = %v, want absent when nothing was omitted", m["findings_omitted"])
+	}
+
+	// limit keeps the most severe rows.
+	m = call(map[string]any{"limit": 1})
+	if got := rows(m); len(got) != 1 || got[0]["check_id"] != "hi" {
+		t.Errorf("limit=1 rows = %v, want [hi]", got)
+	}
+
+	// include_descriptions=true restores short prose on every row.
+	m = call(map[string]any{"include_descriptions": true})
+	got = rows(m)
+	if len(got) != 2 || got[0]["short_description"] != "hi short" {
+		t.Errorf("include_descriptions rows = %v, want short prose on every row", got)
+	}
+	if _, ok := got[0]["description"]; ok {
+		t.Errorf("deep prose must stay check_ids-only: %v", got[0])
+	}
+
+	// check_ids is the deep-dive: the full prose tier rides along.
+	m = call(map[string]any{"check_ids": []string{"hi"}})
+	got = rows(m)
+	if len(got) != 1 || got[0]["check_id"] != "hi" {
+		t.Fatalf("check_ids rows = %v, want [hi]", got)
+	}
+	hi := got[0]
+	if hi["short_description"] != "hi short" || hi["description"] != "hi full" || hi["business_impact"] != "hi impact" {
+		t.Errorf("deep-dive prose = %v, want all tiers", hi)
+	}
+	regs, _ := hi["regulations"].([]any)
+	if len(regs) != 1 {
+		t.Fatalf("regulations = %v, want the GDPR mapping", hi["regulations"])
+	}
+
+	// Invalid min_severity surfaces as a tool error naming the allowed set.
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "get_mari_assessment",
-		Arguments: map[string]any{"assessment_ref": "ri-1"},
+		Arguments: map[string]any{"assessment_ref": "ri-1", "min_severity": "urgent"},
 	})
 	if err != nil {
 		t.Fatalf("CallTool: %v", err)
 	}
-	if res.IsError {
-		t.Fatalf("result IsError: %s", contentText(res))
-	}
-	ids := findingIDs(t, res, "check_id")
-	if !sameSet(ids, []string{"aff", "clean"}) {
-		t.Errorf("findings = %v, want [aff clean]", ids)
-	}
-	if d := firstDescription(res); d != "" {
-		t.Errorf("default short_description = %q, want omitted", d)
-	}
-
-	// include_descriptions=true restores the prose on every row.
-	res, err = cs.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "get_mari_assessment",
-		Arguments: map[string]any{"assessment_ref": "ri-1", "include_descriptions": true},
-	})
-	if err != nil {
-		t.Fatalf("CallTool: %v", err)
-	}
-	if d := firstDescription(res); d != "long prose" {
-		t.Errorf("include_descriptions short_description = %q, want the full prose", d)
-	}
-
-	// check_ids scopes the rows and keeps their full descriptions.
-	res, err = cs.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "get_mari_assessment",
-		Arguments: map[string]any{"assessment_ref": "ri-1", "check_ids": []string{"aff"}},
-	})
-	if err != nil {
-		t.Fatalf("CallTool: %v", err)
-	}
-	if ids := findingIDs(t, res, "check_id"); len(ids) != 1 || ids[0] != "aff" {
-		t.Errorf("check_ids findings = %v, want [aff]", ids)
-	}
-	if d := firstDescription(res); d != "long prose" {
-		t.Errorf("check_ids short_description = %q, want the full prose", d)
+	if !res.IsError || !strings.Contains(contentText(res), "allowed: info, warn, low, medium, high, critical") {
+		t.Errorf("min_severity=urgent: IsError=%v content=%q, want enum error", res.IsError, contentText(res))
 	}
 }
 

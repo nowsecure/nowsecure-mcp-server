@@ -133,26 +133,7 @@ func newProfileCmd(opts *rootOptions) *cobra.Command {
 				return printJSON(cmd, res)
 			},
 		},
-		&cobra.Command{
-			Use:   "mari-assessment <ref> [expand,...]",
-			Short: "Get a MARI assessment (unfiltered view)",
-			Args:  cobra.RangeArgs(1, 2),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				c, err := newProfileClient(opts)
-				if err != nil {
-					return err
-				}
-				var expand []string
-				if len(args) > 1 {
-					expand = splitCSV(args[1])
-				}
-				res, err := c.GetMARIAssessment(cmd.Context(), args[0], expand)
-				if err != nil {
-					return err
-				}
-				return printJSON(cmd, res)
-			},
-		},
+		newProfileMARIAssessmentCmd(opts),
 		&cobra.Command{
 			Use:   "url <url>",
 			Short: "Decode a NowSecure console URL into ids",
@@ -167,6 +148,72 @@ func newProfileCmd(opts *rootOptions) *cobra.Command {
 		},
 	)
 	return profile
+}
+
+// newProfileMARIAssessmentCmd mirrors the get_mari_assessment MCP tool: the
+// default is the same compact risk card, and the tool's row/prose options are
+// exposed as flags so every disclosure tier can be exercised from the CLI.
+func newProfileMARIAssessmentCmd(opts *rootOptions) *cobra.Command {
+	var (
+		minSeverity  string
+		limit        int
+		checkIDs     string
+		includeDescs bool
+	)
+	cmd := &cobra.Command{
+		Use:   "mari-assessment <ref> [expand,...]",
+		Short: "Get a MARI assessment (risk card by default, like the MCP tool)",
+		Long: `Mirrors the get_mari_assessment MCP tool. The default response is the compact
+risk card: identity, both risk score families, per-category score/impact
+breakdowns, and severity counts — finding rows are omitted (findings_omitted
+reports how many).
+
+Pull finding rows with --min-severity or --limit (most severe first), the
+full per-finding prose (description, business impact, regulations) with
+--check-ids, or short descriptions on every row with --include-descriptions.
+
+The optional second argument opts into heavier sections, comma-separated:
+` + strings.Join(nsclient.MARIExpandValues, ", ") + `.`,
+		Example: `  # compact risk card
+  nsmcp profile mari-assessment <ref>
+
+  # the most severe findings only
+  nsmcp profile mari-assessment <ref> --min-severity high --limit 10
+
+  # full prose deep-dive for specific findings
+  nsmcp profile mari-assessment <ref> --check-ids remote_code_execution,uses_http
+
+  # expand heavier sections
+  nsmcp profile mari-assessment <ref> permissions,trackingDomains`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := newProfileClient(opts)
+			if err != nil {
+				return err
+			}
+			var expand []string
+			if len(args) > 1 {
+				expand = splitCSV(args[1])
+			}
+			res, err := c.GetMARIAssessment(cmd.Context(), nsclient.MARIAssessmentParams{
+				AssessmentRef:       args[0],
+				Expand:              expand,
+				MinSeverity:         minSeverity,
+				Limit:               limit,
+				CheckIDs:            splitCSV(checkIDs),
+				IncludeDescriptions: includeDescs,
+			})
+			if err != nil {
+				return err
+			}
+			return printJSON(cmd, res)
+		},
+	}
+	cmd.Flags().StringVar(&minSeverity, "min-severity", "", "finding rows at this severity or higher (info returns every row)")
+	cmd.Flags().IntVar(&limit, "limit", 0, "max finding rows to return (most severe kept)")
+	cmd.Flags().StringVar(&checkIDs, "check-ids", "", "comma-separated check_ids: the full-prose deep-dive")
+	cmd.Flags().BoolVar(&includeDescs, "include-descriptions", false, "include short_description on every returned row")
+	return cmd
 }
 
 // newProfileClient resolves config (both tool groups on, matching the old

@@ -43,21 +43,44 @@ type MARIAppPage struct {
 	Page  OffsetPage `json:"page"`
 }
 
-// MARIFinding is a compacted MARI assessment finding.
+// MARIFinding is a compacted MARI assessment finding. Scalar metadata is
+// always present on returned rows; the prose tiers (short_description, and the
+// check_ids-only description/business_impact/regulations) are populated per
+// the caller's MARIAssessmentParams.
 type MARIFinding struct {
-	CheckID          string   `json:"check_id"`
-	Title            string   `json:"title"`
-	ShortDescription string   `json:"short_description,omitempty"`
-	Categories       []string `json:"categories,omitempty"`
-	Affected         bool     `json:"affected"`
-	Severity         string   `json:"severity,omitempty"`
-	CVSSScore        float64  `json:"cvss_score,omitempty"`
+	CheckID          string           `json:"check_id"`
+	Title            string           `json:"title"`
+	ShortDescription string           `json:"short_description,omitempty"`
+	Description      string           `json:"description,omitempty" jsonschema:"full finding description prose (check_ids deep-dive only)"`
+	BusinessImpact   string           `json:"business_impact,omitempty" jsonschema:"business impact prose (check_ids deep-dive only)"`
+	Regulations      []MARIRegulation `json:"regulations,omitempty" jsonschema:"compliance/standard mappings — GDPR, HIPAA, PCI, OWASP, CWE, ... (check_ids deep-dive only)"`
+	Categories       []string         `json:"categories,omitempty"`
+	Affected         bool             `json:"affected"`
+	Severity         string           `json:"severity,omitempty"`
+	CVSSScore        float64          `json:"cvss_score,omitempty"`
+	Rating           float64          `json:"rating,omitempty" jsonschema:"0-10 NowSecure rating (higher is worse) for risk findings not scored by CVSS; at most one of rating/cvss_score is set"`
+	AnalysisType     string           `json:"analysis_type,omitempty" jsonschema:"static or dynamic"`
 }
 
-// MARISummary counts findings checked vs affected.
+// MARIRegulation maps a finding onto one regulation or standard.
+type MARIRegulation struct {
+	Label string               `json:"label"`
+	Links []MARIRegulationLink `json:"links,omitempty"`
+}
+
+// MARIRegulationLink is one reference into a regulation/standard document.
+type MARIRegulationLink struct {
+	Title string `json:"title,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
+// MARISummary counts findings checked vs affected. Counts breaks the affected
+// findings down by severity and always covers the full report, no matter how
+// the returned rows were filtered.
 type MARISummary struct {
-	TotalFindingsAffected int `json:"total_findings_affected"`
-	TotalFindingsChecked  int `json:"total_findings_checked"`
+	TotalFindingsAffected int            `json:"total_findings_affected"`
+	TotalFindingsChecked  int            `json:"total_findings_checked"`
+	Counts                SeverityCounts `json:"counts" jsonschema:"affected findings by severity across the full report (unaffected by min_severity/limit/check_ids)"`
 }
 
 // MARIAssessment is a single third-party app risk profile.
@@ -66,21 +89,24 @@ type MARISummary struct {
 // and json.RawMessage would be inferred as a byte array, making the server
 // reject its own responses whenever expand is used.
 type MARIAssessment struct {
-	AssessmentRef               string         `json:"assessment_ref"`
-	Title                       string         `json:"title,omitempty" jsonschema:"app title (when reported by upstream)"`
-	Package                     string         `json:"package,omitempty"`
-	Platform                    string         `json:"platform,omitempty"`
-	CreatedAt                   string         `json:"created_at,omitempty"`
-	RiskScore                   float64        `json:"risk_score"`
-	RiskRating                  string         `json:"risk_rating,omitempty"`
-	RiskCategory                string         `json:"risk_category,omitempty"`
-	RiskRecommendation          string         `json:"risk_recommendation,omitempty"`
-	NowSecureRiskScore          float64        `json:"nowsecure_risk_score"`
-	NowSecureRiskCategory       string         `json:"nowsecure_risk_category,omitempty"`
-	NowSecureRiskRecommendation string         `json:"nowsecure_risk_recommendation,omitempty"`
-	Summary                     MARISummary    `json:"summary"`
-	Findings                    []MARIFinding  `json:"findings"`
-	Expanded                    map[string]any `json:"expanded,omitempty" jsonschema:"requested expand sections keyed by snake_case section name"`
+	AssessmentRef                 string             `json:"assessment_ref"`
+	Title                         string             `json:"title,omitempty" jsonschema:"app title (when reported by upstream)"`
+	Package                       string             `json:"package,omitempty"`
+	Platform                      string             `json:"platform,omitempty"`
+	CreatedAt                     string             `json:"created_at,omitempty"`
+	RiskScore                     float64            `json:"risk_score"`
+	RiskRating                    string             `json:"risk_rating,omitempty"`
+	RiskCategory                  string             `json:"risk_category,omitempty"`
+	RiskRecommendation            string             `json:"risk_recommendation,omitempty"`
+	NowSecureRiskScore            float64            `json:"nowsecure_risk_score"`
+	NowSecureRiskCategory         string             `json:"nowsecure_risk_category,omitempty"`
+	NowSecureRiskRecommendation   string             `json:"nowsecure_risk_recommendation,omitempty"`
+	NowSecureRiskScoresByCategory map[string]float64 `json:"nowsecure_risk_scores_by_category,omitempty" jsonschema:"NowSecure risk score (0-100, higher is worse) per finding category — where the risk concentrates; zero-score categories omitted"`
+	CategoryImpactBreakdown       map[string]float64 `json:"category_impact_breakdown,omitempty" jsonschema:"each finding category's percentage contribution to the overall risk score; zero-impact categories omitted"`
+	Summary                       MARISummary        `json:"summary"`
+	Findings                      []MARIFinding      `json:"findings" jsonschema:"empty on the default risk card; min_severity/limit/check_ids/include_descriptions pull rows, most severe first"`
+	FindingsOmitted               int                `json:"findings_omitted,omitempty" jsonschema:"reported findings not returned in this response; pass min_severity (info returns all), limit, or check_ids to pull rows"`
+	Expanded                      map[string]any     `json:"expanded,omitempty" jsonschema:"requested expand sections keyed by snake_case section name"`
 }
 
 // libComponent is one third-party software component that carries known CVEs.
@@ -242,15 +268,42 @@ func (c *Client) ListMARIApps(ctx context.Context, p ListMARIAppsParams) (*MARIA
 
 // ---- MARI assessment ------------------------------------------------------
 
-// GetMARIAssessment returns a third-party app's risk profile. expand names
-// optional heavier sections (permissions, trackingDomains, ...) captured as
-// decoded JSON. Upstream reports only findings the app is affected by; the
-// summary still counts both affected and checked.
-func (c *Client) GetMARIAssessment(ctx context.Context, assessmentRef string, expand []string) (*MARIAssessment, error) {
-	if assessmentRef == "" {
+// MARIAssessmentParams selects what GetMARIAssessment returns. The default is
+// a compact risk card (identity, scores, category breakdowns, severity
+// counts) with no finding rows; MinSeverity, Limit, CheckIDs, or
+// IncludeDescriptions opt into rows. Row selection is entirely client-side:
+// the upstream endpoint's only lever is expand and it ships the full findings
+// list, prose included, on every call.
+type MARIAssessmentParams struct {
+	AssessmentRef       string
+	Expand              []string // optional heavier sections (see MARIExpandValues)
+	MinSeverity         string   // optional: info|warn|low|medium|high|critical; info returns every row
+	Limit               int      // optional: cap the rows returned (most severe kept)
+	CheckIDs            []string // optional: only these findings, each with its full prose tier
+	IncludeDescriptions bool     // short_description on every returned row; alone, returns all rows
+}
+
+// GetMARIAssessment returns a third-party app's risk profile: a compact risk
+// card by default, finding rows (most severe first) when the params ask for
+// them, and Expand sections captured as decoded JSON. Upstream reports only
+// findings the app is affected by; the summary still counts both affected
+// and checked.
+func (c *Client) GetMARIAssessment(ctx context.Context, p MARIAssessmentParams) (*MARIAssessment, error) {
+	if p.AssessmentRef == "" {
 		return nil, fmt.Errorf("assessment_ref is required")
 	}
-	norm, err := normalizeExpand(expand)
+	if p.Limit < 0 {
+		return nil, fmt.Errorf("limit must not be negative")
+	}
+	minRank := -1
+	if p.MinSeverity != "" {
+		r, ok := severityRank[strings.ToLower(p.MinSeverity)]
+		if !ok {
+			return nil, fmt.Errorf("invalid min_severity %q (allowed: info, warn, low, medium, high, critical)", p.MinSeverity)
+		}
+		minRank = r
+	}
+	norm, err := normalizeExpand(p.Expand)
 	if err != nil {
 		return nil, err
 	}
@@ -268,34 +321,41 @@ func (c *Client) GetMARIAssessment(ctx context.Context, assessmentRef string, ex
 	// Decode into a raw map so expandables can be captured without modeling
 	// their deep nesting, and core fields pulled from a typed view.
 	var rawMap map[string]json.RawMessage
-	if err := c.getJSON(ctx, "get MARI assessment", "/v2/risk-intelligence/assessment/"+url.PathEscape(assessmentRef), q, &rawMap); err != nil {
+	if err := c.getJSON(ctx, "get MARI assessment", "/v2/risk-intelligence/assessment/"+url.PathEscape(p.AssessmentRef), q, &rawMap); err != nil {
 		return nil, err
 	}
 
 	var core struct {
-		Title                       string  `json:"title"`
-		PackageName                 string  `json:"packageName"`
-		Platform                    string  `json:"platform"`
-		CreatedAt                   string  `json:"createdAt"`
-		RiskScore                   float64 `json:"riskScore"`
-		RiskRating                  string  `json:"riskRating"`
-		RiskCategory                string  `json:"riskCategory"`
-		RiskRecommendation          string  `json:"riskRecommendation"`
-		NowSecureRiskScore          float64 `json:"nowSecureRiskScore"`
-		NowSecureRiskCategory       string  `json:"nowSecureRiskCategory"`
-		NowSecureRiskRecommendation string  `json:"nowSecureRiskRecommendation"`
-		SummaryInfo                 struct {
+		Title                                string             `json:"title"`
+		PackageName                          string             `json:"packageName"`
+		Platform                             string             `json:"platform"`
+		CreatedAt                            string             `json:"createdAt"`
+		RiskScore                            float64            `json:"riskScore"`
+		RiskRating                           string             `json:"riskRating"`
+		RiskCategory                         string             `json:"riskCategory"`
+		RiskRecommendation                   string             `json:"riskRecommendation"`
+		NowSecureRiskScore                   float64            `json:"nowSecureRiskScore"`
+		NowSecureRiskCategory                string             `json:"nowSecureRiskCategory"`
+		NowSecureRiskRecommendation          string             `json:"nowSecureRiskRecommendation"`
+		NowSecureRiskScoresByFindingCategory map[string]float64 `json:"nowSecureRiskScoresByFindingCategory"`
+		CategoryImpactBreakdown              map[string]float64 `json:"categoryImpactBreakdown"`
+		SummaryInfo                          struct {
 			TotalFindingsAffected int `json:"totalFindingsAffected"`
 			TotalFindingsChecked  int `json:"totalFindingsChecked"`
 		} `json:"summaryInfo"`
 		Findings []struct {
-			CheckID          string   `json:"checkId"`
-			Title            string   `json:"title"`
-			ShortDescription string   `json:"shortDescription"`
-			Categories       []string `json:"categories"`
-			Affected         bool     `json:"affected"`
-			Severity         string   `json:"severity"`
-			CVSSScore        float64  `json:"cvssScore"`
+			CheckID          string           `json:"checkId"`
+			Title            string           `json:"title"`
+			ShortDescription string           `json:"shortDescription"`
+			Description      string           `json:"description"`
+			BusinessImpact   string           `json:"businessImpact"`
+			Regulations      []MARIRegulation `json:"regulations"`
+			Categories       []string         `json:"categories"`
+			Affected         bool             `json:"affected"`
+			Severity         string           `json:"severity"`
+			CVSSScore        float64          `json:"cvssScore"`
+			Rating           float64          `json:"rating"`
+			AnalysisType     string           `json:"analysisType"`
 		} `json:"findings"`
 	}
 	// Re-marshal the map to decode the typed core in one shot. Decode failures
@@ -323,18 +383,20 @@ func (c *Client) GetMARIAssessment(ctx context.Context, assessmentRef string, ex
 	}
 
 	out := &MARIAssessment{
-		AssessmentRef:               assessmentRef,
-		Title:                       core.Title,
-		Package:                     core.PackageName,
-		Platform:                    core.Platform,
-		CreatedAt:                   core.CreatedAt,
-		RiskScore:                   core.RiskScore,
-		RiskRating:                  core.RiskRating,
-		RiskCategory:                core.RiskCategory,
-		RiskRecommendation:          core.RiskRecommendation,
-		NowSecureRiskScore:          core.NowSecureRiskScore,
-		NowSecureRiskCategory:       core.NowSecureRiskCategory,
-		NowSecureRiskRecommendation: core.NowSecureRiskRecommendation,
+		AssessmentRef:                 p.AssessmentRef,
+		Title:                         core.Title,
+		Package:                       core.PackageName,
+		Platform:                      core.Platform,
+		CreatedAt:                     core.CreatedAt,
+		RiskScore:                     core.RiskScore,
+		RiskRating:                    core.RiskRating,
+		RiskCategory:                  core.RiskCategory,
+		RiskRecommendation:            core.RiskRecommendation,
+		NowSecureRiskScore:            core.NowSecureRiskScore,
+		NowSecureRiskCategory:         core.NowSecureRiskCategory,
+		NowSecureRiskRecommendation:   core.NowSecureRiskRecommendation,
+		NowSecureRiskScoresByCategory: dropZeroScores(core.NowSecureRiskScoresByFindingCategory),
+		CategoryImpactBreakdown:       dropZeroScores(core.CategoryImpactBreakdown),
 		Summary: MARISummary{
 			TotalFindingsAffected: core.SummaryInfo.TotalFindingsAffected,
 			TotalFindingsChecked:  core.SummaryInfo.TotalFindingsChecked,
@@ -352,17 +414,87 @@ func (c *Client) GetMARIAssessment(ctx context.Context, assessmentRef string, ex
 	if out.CreatedAt == "" {
 		out.CreatedAt = appInfo.CreatedAt
 	}
-	for _, ff := range core.Findings {
-		out.Findings = append(out.Findings, MARIFinding{
-			CheckID:          ff.CheckID,
-			Title:            ff.Title,
-			ShortDescription: ff.ShortDescription,
-			Categories:       ff.Categories,
-			Affected:         ff.Affected,
-			Severity:         ff.Severity,
-			CVSSScore:        ff.CVSSScore,
-		})
+	checkSet := make(map[string]struct{}, len(p.CheckIDs))
+	for _, id := range p.CheckIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			checkSet[strings.ToLower(id)] = struct{}{}
+		}
 	}
+	// Rows are opt-in: the default risk card carries only the counts below.
+	// checkSet (not p.CheckIDs) so a list of blank ids reads as unset rather
+	// than flipping the card into a full row dump.
+	rowsRequested := minRank >= 0 || p.Limit > 0 || len(checkSet) > 0 || p.IncludeDescriptions
+	for _, ff := range core.Findings {
+		// Counts cover the full report regardless of the row filters below.
+		// Unknown severities land in info — the same rank the row filter
+		// gives them — so the buckets always sum to the rows shipped.
+		if ff.Affected {
+			switch strings.ToLower(ff.Severity) {
+			case "critical":
+				out.Summary.Counts.Critical++
+			case "high":
+				out.Summary.Counts.High++
+			case "medium":
+				out.Summary.Counts.Medium++
+			case "low":
+				out.Summary.Counts.Low++
+			case "warn":
+				out.Summary.Counts.Warn++
+			default:
+				out.Summary.Counts.Info++
+			}
+		} else {
+			if out.Summary.Counts.Pass == nil {
+				out.Summary.Counts.Pass = new(int)
+			}
+			*out.Summary.Counts.Pass++
+		}
+
+		if !rowsRequested {
+			continue
+		}
+		if len(checkSet) > 0 {
+			if _, ok := checkSet[strings.ToLower(ff.CheckID)]; !ok {
+				continue
+			}
+		}
+		// Unknown severities rank as info (map zero value): "min_severity=info
+		// returns every row" must hold even if upstream grows a new label.
+		if severityRank[strings.ToLower(ff.Severity)] < minRank {
+			continue
+		}
+		row := MARIFinding{
+			CheckID:      ff.CheckID,
+			Title:        ff.Title,
+			Categories:   ff.Categories,
+			Affected:     ff.Affected,
+			Severity:     ff.Severity,
+			CVSSScore:    ff.CVSSScore,
+			Rating:       ff.Rating,
+			AnalysisType: ff.AnalysisType,
+		}
+		// Prose is tiered: the check_ids deep-dive carries everything, plain
+		// rows carry short_description only under include_descriptions, and
+		// the deep prose (description/business_impact/regulations) never
+		// rides along unscoped — it dominates the payload.
+		if len(checkSet) > 0 {
+			row.ShortDescription = ff.ShortDescription
+			row.Description = ff.Description
+			row.BusinessImpact = ff.BusinessImpact
+			row.Regulations = ff.Regulations
+		} else if p.IncludeDescriptions {
+			row.ShortDescription = ff.ShortDescription
+		}
+		out.Findings = append(out.Findings, row)
+	}
+	// Sort most-severe first for triage; upstream order is arbitrary.
+	sort.SliceStable(out.Findings, func(i, j int) bool {
+		return severityRank[strings.ToLower(out.Findings[i].Severity)] > severityRank[strings.ToLower(out.Findings[j].Severity)]
+	})
+	if p.Limit > 0 && len(out.Findings) > p.Limit {
+		out.Findings = out.Findings[:p.Limit]
+	}
+	out.FindingsOmitted = len(core.Findings) - len(out.Findings)
 	if len(norm) > 0 {
 		out.Expanded = make(map[string]any, len(norm))
 		for _, k := range norm {
@@ -484,6 +616,23 @@ func trimAIUsage(m map[string]any) {
 			m[k] = map[string]any{"affected": false}
 		}
 	}
+}
+
+// dropZeroScores compacts a category→score map to its non-zero entries. The
+// category set is fixed upstream, so a zero only says "checked, no risk" and
+// would pad every response; nil is returned when nothing remains so omitempty
+// drops the field.
+func dropZeroScores(m map[string]float64) map[string]float64 {
+	out := make(map[string]float64, len(m))
+	for k, v := range m {
+		if v != 0 {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func normalizeExpand(expand []string) ([]string, error) {

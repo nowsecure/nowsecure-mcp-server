@@ -3,7 +3,8 @@ package nsclient
 // MARI-domain tests: ListMARIApps (1-based pagination, enum validation and
 // canonical casing, created_at decode, page envelope) and GetMARIAssessment
 // (expand capture/validation, identity threading, librariesAndSdks shaping,
-// aiUsage trim, findings pass-through, decode errors).
+// aiUsage trim, risk-card default, row selection, deep-dive prose tiers,
+// decode errors).
 
 import (
 	"net/http"
@@ -115,11 +116,11 @@ func TestGetMARIAssessment_ExpandCaptured(t *testing.T) {
 			"permissions":{"summary":{"totalPermissions":9}}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"permissions"})
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Expand: []string{"permissions"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Summary.TotalFindingsChecked != 50 || len(got.Findings) != 1 {
+	if got.Summary.TotalFindingsChecked != 50 || len(got.Findings) != 0 || got.FindingsOmitted != 1 {
 		t.Fatalf("core mapping wrong: %+v", got)
 	}
 	if _, ok := got.Expanded["permissions"]; !ok {
@@ -129,32 +130,202 @@ func TestGetMARIAssessment_ExpandCaptured(t *testing.T) {
 
 func TestGetMARIAssessment_BadExpand(t *testing.T) {
 	c := New("http://unused", "tok")
-	if _, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"nope"}); err == nil {
+	if _, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Expand: []string{"nope"}}); err == nil {
 		t.Error("expected error for unsupported expand value")
 	}
 }
 
-func TestGetMARIAssessment_FindingsPassThrough(t *testing.T) {
-	// Upstream reports only affected findings; the client applies no filter of
-	// its own, so every reported finding survives and summary totals are kept.
+// riskCardBody is a four-finding fixture (mixed severities, deliberately not
+// severity-ordered, full prose on every row) shared by the risk-card, row
+// selection, and deep-dive tests.
+const riskCardBody = `{
+	"createdAt":"2024-01-01","riskScore":40,"riskRating":"C",
+	"nowSecureRiskScoresByFindingCategory":{"Storage":80.1,"Privacy":63.2,"Endpoint":0},
+	"categoryImpactBreakdown":{"Storage":33.91,"Endpoint":0},
+	"summaryInfo":{"totalFindingsAffected":3,"totalFindingsChecked":9},
+	"findings":[
+		{"checkId":"med","title":"M","affected":true,"severity":"medium","cvssScore":5.7,"shortDescription":"med short","description":"med full","businessImpact":"med impact","analysisType":"static",
+			"regulations":[{"label":"CWE","links":[{"title":"346","url":"https://cwe.example/346"}]}]},
+		{"checkId":"info","title":"I","affected":true,"severity":"info","shortDescription":"info short","description":"info full","analysisType":"dynamic"},
+		{"checkId":"crit","title":"C","affected":true,"severity":"critical","rating":9,"shortDescription":"crit short","description":"crit full","businessImpact":"crit impact","analysisType":"dynamic"},
+		{"checkId":"clean","title":"OK","affected":false,"severity":"low","shortDescription":"clean short"}
+	]
+}`
+
+func TestGetMARIAssessment_DefaultRiskCard(t *testing.T) {
+	// The default response is a compact risk card: severity counts and the
+	// category breakdowns stand in for the finding rows, which are omitted
+	// and accounted for in findings_omitted.
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{
-			"createdAt":"2024-01-01","riskScore":40,"riskRating":"C",
-			"summaryInfo":{"totalFindingsAffected":1,"totalFindingsChecked":2},
-			"findings":[
-				{"checkId":"a","title":"A","affected":true,"severity":"high"}
-			]
-		}`))
+		_, _ = w.Write([]byte(riskCardBody))
 	})
-	got, err := c.GetMARIAssessment(t.Context(), "ri-1", nil)
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Findings) != 1 || got.Findings[0].CheckID != "a" {
-		t.Errorf("findings = %+v, want [a]", got.Findings)
+	if len(got.Findings) != 0 || got.FindingsOmitted != 4 {
+		t.Errorf("findings = %d rows, omitted %d, want 0/4", len(got.Findings), got.FindingsOmitted)
 	}
-	if got.Summary.TotalFindingsChecked != 2 || got.Summary.TotalFindingsAffected != 1 {
+	if got.Summary.TotalFindingsChecked != 9 || got.Summary.TotalFindingsAffected != 3 {
 		t.Errorf("summary = %+v, want totals preserved", got.Summary)
+	}
+	counts := got.Summary.Counts
+	if counts.Critical != 1 || counts.Medium != 1 || counts.Info != 1 || counts.High != 0 {
+		t.Errorf("counts = %+v, want critical/medium/info = 1", counts)
+	}
+	// The unaffected row lands in pass, not a severity bucket.
+	if counts.Low != 0 || counts.Pass == nil || *counts.Pass != 1 {
+		t.Errorf("counts = %+v, want low 0 and pass 1", counts)
+	}
+	// Category maps are kept, zero-score categories dropped.
+	if got.NowSecureRiskScoresByCategory["Storage"] != 80.1 || got.NowSecureRiskScoresByCategory["Privacy"] != 63.2 {
+		t.Errorf("risk scores by category = %v, want Storage 80.1 / Privacy 63.2", got.NowSecureRiskScoresByCategory)
+	}
+	if _, ok := got.NowSecureRiskScoresByCategory["Endpoint"]; ok {
+		t.Errorf("zero-score category must be dropped: %v", got.NowSecureRiskScoresByCategory)
+	}
+	if got.CategoryImpactBreakdown["Storage"] != 33.91 || len(got.CategoryImpactBreakdown) != 1 {
+		t.Errorf("impact breakdown = %v, want only Storage 33.91", got.CategoryImpactBreakdown)
+	}
+}
+
+func TestGetMARIAssessment_RowSelection(t *testing.T) {
+	// min_severity / limit / include_descriptions opt into rows, always
+	// sorted most-severe first; counts and findings_omitted keep covering
+	// the full report.
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(riskCardBody))
+	}
+
+	c := newTestClient(t, handler)
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", MinSeverity: "medium"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 2 || got.Findings[0].CheckID != "crit" || got.Findings[1].CheckID != "med" {
+		t.Fatalf("min_severity=medium rows = %+v, want [crit med]", got.Findings)
+	}
+	if got.FindingsOmitted != 2 {
+		t.Errorf("findings_omitted = %d, want 2", got.FindingsOmitted)
+	}
+	if got.Summary.Counts.Info != 1 {
+		t.Errorf("counts must cover filtered-out rows: %+v", got.Summary.Counts)
+	}
+	// Plain rows carry scalars but no prose tier.
+	crit := got.Findings[0]
+	if crit.Rating != 9 || crit.AnalysisType != "dynamic" || got.Findings[1].CVSSScore != 5.7 {
+		t.Errorf("row scalars wrong: %+v", got.Findings)
+	}
+	if crit.ShortDescription != "" || crit.Description != "" || crit.BusinessImpact != "" || crit.Regulations != nil {
+		t.Errorf("prose must be omitted on plain rows: %+v", crit)
+	}
+
+	c = newTestClient(t, handler)
+	got, err = c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 1 || got.Findings[0].CheckID != "crit" || got.FindingsOmitted != 3 {
+		t.Errorf("limit=1 = %+v (omitted %d), want just crit / 3", got.Findings, got.FindingsOmitted)
+	}
+
+	// include_descriptions alone returns every row, with short_description.
+	c = newTestClient(t, handler)
+	got, err = c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", IncludeDescriptions: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 4 || got.FindingsOmitted != 0 {
+		t.Fatalf("include_descriptions rows = %d (omitted %d), want 4/0", len(got.Findings), got.FindingsOmitted)
+	}
+	if got.Findings[0].CheckID != "crit" || got.Findings[0].ShortDescription != "crit short" {
+		t.Errorf("first row = %+v, want crit with short prose", got.Findings[0])
+	}
+	if got.Findings[0].Description != "" {
+		t.Errorf("deep prose must stay check_ids-only: %+v", got.Findings[0])
+	}
+}
+
+func TestGetMARIAssessment_CheckIDsDeepDive(t *testing.T) {
+	// check_ids scopes the rows and returns the full prose tier: short and
+	// full descriptions, business impact, and regulation mappings.
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(riskCardBody))
+	})
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", CheckIDs: []string{" MED ", "crit"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 2 || got.Findings[0].CheckID != "crit" || got.Findings[1].CheckID != "med" {
+		t.Fatalf("check_ids rows = %+v, want [crit med] (trimmed, case-insensitive, severity-sorted)", got.Findings)
+	}
+	med := got.Findings[1]
+	if med.ShortDescription != "med short" || med.Description != "med full" || med.BusinessImpact != "med impact" {
+		t.Errorf("deep-dive prose = %+v, want all tiers populated", med)
+	}
+	if len(med.Regulations) != 1 || med.Regulations[0].Label != "CWE" || med.Regulations[0].Links[0].URL != "https://cwe.example/346" {
+		t.Errorf("regulations = %+v, want the CWE mapping", med.Regulations)
+	}
+	if got.FindingsOmitted != 2 {
+		t.Errorf("findings_omitted = %d, want 2", got.FindingsOmitted)
+	}
+}
+
+func TestGetMARIAssessment_UnknownSeverity(t *testing.T) {
+	// A severity outside the known set must not vanish: it counts as info and
+	// min_severity=info (the "every row" tier) still returns it, while higher
+	// thresholds exclude it.
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"riskScore":40,"summaryInfo":{"totalFindingsAffected":2,"totalFindingsChecked":2},
+			"findings":[
+				{"checkId":"hi","title":"H","affected":true,"severity":"high"},
+				{"checkId":"odd","title":"O","affected":true,"severity":"brand-new-label"}
+			]
+		}`))
+	}
+	c := newTestClient(t, handler)
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", MinSeverity: "info"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 2 || got.Summary.Counts.Info != 1 || got.Summary.Counts.High != 1 {
+		t.Errorf("min_severity=info rows = %+v counts = %+v, want both rows, unknown counted as info", got.Findings, got.Summary.Counts)
+	}
+	c = newTestClient(t, handler)
+	got, err = c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", MinSeverity: "low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 1 || got.Findings[0].CheckID != "hi" {
+		t.Errorf("min_severity=low rows = %+v, want unknown severity excluded", got.Findings)
+	}
+}
+
+func TestGetMARIAssessment_BlankCheckIDsStayRiskCard(t *testing.T) {
+	// check_ids of only blank strings reads as unset: the caller scoped to
+	// nothing, so the response stays a risk card instead of dumping all rows.
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(riskCardBody))
+	})
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", CheckIDs: []string{" ", ""}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 0 || got.FindingsOmitted != 4 {
+		t.Errorf("blank check_ids = %d rows (omitted %d), want the risk card (0/4)", len(got.Findings), got.FindingsOmitted)
+	}
+}
+
+func TestGetMARIAssessment_RowParamValidation(t *testing.T) {
+	c := New("http://unused", "tok")
+	if _, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", MinSeverity: "urgent"}); err == nil ||
+		!strings.Contains(err.Error(), `invalid min_severity "urgent" (allowed: info, warn, low, medium, high, critical)`) {
+		t.Errorf("min_severity error = %v, want the enum list", err)
+	}
+	if _, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Limit: -1}); err == nil ||
+		!strings.Contains(err.Error(), "limit must not be negative") {
+		t.Errorf("limit error = %v, want negative-limit rejection", err)
 	}
 }
 
@@ -164,7 +335,7 @@ func TestGetMARIAssessment_CoreDecodeError(t *testing.T) {
 		// swallowed into a zeroed (== "no risk") profile.
 		_, _ = w.Write([]byte(`{"riskScore":"not-a-number"}`))
 	})
-	_, err := c.GetMARIAssessment(t.Context(), "ri-1", nil)
+	_, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1"})
 	if err == nil || !strings.Contains(err.Error(), "decoding response") {
 		t.Fatalf("error = %v, want 'decoding response'", err)
 	}
@@ -183,7 +354,7 @@ func TestGetMARIAssessment_ExpandedIsDecodedMap(t *testing.T) {
 			"permissions":{"summary":{"totalPermissions":9}}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"permissions"})
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Expand: []string{"permissions"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +387,7 @@ func TestGetMARIAssessment_IdentityFromAppInfo(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(body))
 	})
-	got, err := c.GetMARIAssessment(t.Context(), "ri-1", nil)
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +402,7 @@ func TestGetMARIAssessment_IdentityFromAppInfo(t *testing.T) {
 	c = newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))
 	})
-	got, err = c.GetMARIAssessment(t.Context(), "ri-1", []string{"appInfo"})
+	got, err = c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Expand: []string{"appInfo"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +438,7 @@ func TestGetMARIAssessment_LibrariesAndSdksShaped(t *testing.T) {
 			}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"librariesAndSdks"})
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Expand: []string{"librariesAndSdks"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +479,7 @@ func TestGetMARIAssessment_AIUsageTrimmed(t *testing.T) {
 			}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"aiUsage"})
+	got, err := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: "ri-1", Expand: []string{"aiUsage"}})
 	if err != nil {
 		t.Fatal(err)
 	}

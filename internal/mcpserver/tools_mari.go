@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -23,10 +22,11 @@ func (s *srv) registerMARITools(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name: "get_mari_assessment",
-		Description: "Get the risk profile for one third-party app by its MARI assessment ref: title/package/platform identity (always populated), overall risk score/rating/category, NowSecure risk, findings summary, and a compact list of findings — " +
-			"upstream reports only the findings the app is affected by (the summary counts both affected and checked). risk_score is 0-100 where HIGHER is worse. " +
-			"Two score families: risk_* reflects any org-specific score override; nowsecure_risk_* is NowSecure's unmodified computed risk — identical unless your org overrode the score. " +
-			"Finding rows omit short_description prose by default — pull it back with check_ids=[...] for specific findings or include_descriptions=true for every row. " +
+		Description: "Get the risk profile for one third-party app by its MARI assessment ref. The default response is a compact risk card: title/package/platform identity, overall risk score/rating/category, NowSecure risk, per-category risk scores and impact breakdown, and summary.counts of affected findings by severity — " +
+			"finding rows themselves are omitted (findings_omitted reports how many; upstream reports only findings the app is affected by, the summary counts both affected and checked). " +
+			"risk_score is 0-100 where HIGHER is worse. Two score families: risk_* reflects any org-specific score override; nowsecure_risk_* is NowSecure's unmodified computed risk — identical unless your org overrode the score. " +
+			"Pull finding rows with min_severity (info returns every row, most severe first) or limit (top-N most severe); rows carry check_id, title, categories, severity, and cvss_score or rating. " +
+			"check_ids=[...] is the per-finding deep-dive: full short_description, description, business_impact, and regulations (GDPR/HIPAA/PCI/OWASP/CWE/... mappings with links). include_descriptions=true adds short_description to every returned row. " +
 			"Use expand to opt into heavier sections (permissions, trackingDomains, networkConnections, librariesAndSdks, aiUsage, iosMetadata, appInfo) for a deeper due-diligence report; expanded librariesAndSdks is shaped down to its summary plus CVE-bearing components only.",
 		Annotations: readOnlyAPI(),
 	}, s.getMARIAssessment)
@@ -48,8 +48,10 @@ type listMARIInput struct {
 
 type getMARIInput struct {
 	AssessmentRef string   `json:"assessment_ref" jsonschema:"MARI assessment ref (from list_mari_apps assessment_ref)"`
-	CheckIDs      []string `json:"check_ids,omitempty" jsonschema:"only return these findings (check_id values), each with its full short_description — the on-demand deep-dive"`
-	IncludeDescs  bool     `json:"include_descriptions,omitempty" jsonschema:"include short_description on every finding row (default false; prefer check_ids for specific findings)"`
+	MinSeverity   string   `json:"min_severity,omitempty" jsonschema:"return finding rows at this severity or higher: info, warn, low, medium, high, critical (info returns every row; default returns none — summary.counts still covers them)"`
+	Limit         int      `json:"limit,omitempty" jsonschema:"max finding rows to return, most severe kept (summary.counts still covers the full report)"`
+	CheckIDs      []string `json:"check_ids,omitempty" jsonschema:"only return these findings (check_id values), each with its full prose: short_description, description, business_impact, regulations — the on-demand deep-dive"`
+	IncludeDescs  bool     `json:"include_descriptions,omitempty" jsonschema:"include short_description on every returned finding row; on its own returns every row (default false; prefer check_ids for specific findings)"`
 	Expand        []string `json:"expand,omitempty" jsonschema:"optional heavier sections to include: appInfo, aiUsage, iosMetadata, librariesAndSdks (shaped/compact: summary + CVE-bearing components only), networkConnections, permissions, trackingDomains"`
 }
 
@@ -97,28 +99,19 @@ func (s *srv) getMARIAssessment(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, nil, err
 	}
-	out, err := c.GetMARIAssessment(ctx, in.AssessmentRef, in.Expand)
+	// Same progressive-disclosure contract as get_assessment_findings, one
+	// notch further: the default is a risk card with no rows at all; row and
+	// prose selection live in the client (nsclient.MARIAssessmentParams).
+	out, err := c.GetMARIAssessment(ctx, nsclient.MARIAssessmentParams{
+		AssessmentRef:       in.AssessmentRef,
+		Expand:              in.Expand,
+		MinSeverity:         in.MinSeverity,
+		Limit:               in.Limit,
+		CheckIDs:            in.CheckIDs,
+		IncludeDescriptions: in.IncludeDescs,
+	})
 	if err != nil {
 		return nil, nil, err
-	}
-	// Same progressive-disclosure contract as get_assessment_findings:
-	// prose is omitted by default, scoped check_ids get it in full.
-	if len(in.CheckIDs) > 0 {
-		keep := make(map[string]bool, len(in.CheckIDs))
-		for _, id := range in.CheckIDs {
-			keep[strings.ToLower(strings.TrimSpace(id))] = true
-		}
-		rows := make([]nsclient.MARIFinding, 0, len(in.CheckIDs))
-		for _, f := range out.Findings {
-			if keep[strings.ToLower(f.CheckID)] {
-				rows = append(rows, f)
-			}
-		}
-		out.Findings = rows
-	} else if !in.IncludeDescs {
-		for i := range out.Findings {
-			out.Findings[i].ShortDescription = ""
-		}
 	}
 	return nil, out, nil
 }

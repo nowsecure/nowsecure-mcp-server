@@ -183,7 +183,7 @@ func TestUnknownGroupEnumerationReplaced(t *testing.T) {
 func TestAPIError_404MARIPathWithV1UUIDHintsPlatform(t *testing.T) {
 	err := errFromUpstream(t, http.StatusNotFound, `{"message":"Not Found"}`,
 		func(c *Client) error {
-			_, e := c.GetMARIAssessment(t.Context(), testUUIDv1, nil)
+			_, e := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: testUUIDv1})
 			return e
 		})
 	if msg := err.Error(); !strings.Contains(msg, "this looks like a Platform ref") {
@@ -205,7 +205,7 @@ func TestAPIError_404PlatformPathWithV4UUIDHintsMARI(t *testing.T) {
 func TestAPIError_404MatchingNamespaceNoHint(t *testing.T) {
 	err := errFromUpstream(t, http.StatusNotFound, `{"message":"Not Found"}`,
 		func(c *Client) error {
-			_, e := c.GetMARIAssessment(t.Context(), testUUIDv4, nil)
+			_, e := c.GetMARIAssessment(t.Context(), MARIAssessmentParams{AssessmentRef: testUUIDv4})
 			return e
 		})
 	msg := err.Error()
