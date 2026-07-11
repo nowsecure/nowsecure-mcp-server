@@ -21,10 +21,6 @@ are enabled by default, and at least one must be enabled.
 | **NowSecure Platform** | `list_apps` · `list_assessments` · `get_assessment_findings` · `get_finding` · `search_findings` · `get_apps_affected_by_finding` | `--platform` |
 | **NowSecure MARI** | `list_mari_apps` · `get_mari_assessment` | `--mari` |
 
-One utility tool, `decode_nowsecure_url`, is always registered regardless of
-flags: it parses a NowSecure console URL or deep link into the ids the other
-tools take (pure/local — no API calls).
-
 ### NowSecure Platform
 
 Triage your own mobile app portfolio: scores, findings, fleet-wide impact, and
