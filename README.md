@@ -322,6 +322,7 @@ uses `context_servers`, not `mcpServers`:
 | `NOWSECURE_OAUTH_CLIENT_ID` | OAuth client ID used by `nsmcp login`. No default yet — see below. |
 | `NOWSECURE_OAUTH_ISSUER` | OAuth issuer override for `nsmcp login` (default `https://id.nowsecure.com`). Only needed for non-production tenants, paired with `NOWSECURE_API_URL`. |
 | `NOWSECURE_OAUTH_AUDIENCE` | OAuth audience override for `nsmcp login` (default `https://app.nowsecure.com`). Env-specific on non-production tenants. |
+| `NSMCP_LOG_FILE` | Opt-in tool-call log path. When set, nsmcp opens it append-mode (`0600`) and writes one JSON line per tool call (tool name, `duration_ms`, error if any) plus one line at server start (version, mode, tool groups) — never call arguments or results. Unset (the default): no logging, nothing written to stderr or stdout. |
 
 Mint a static token at <https://app.nowsecure.com/account#token>.
 

@@ -36,7 +36,10 @@ func backendURL(t *testing.T, h http.HandlerFunc) string {
 func session(t *testing.T, cfg *config.Config) *mcp.ClientSession {
 	t.Helper()
 	ctx := t.Context()
-	server := mcpserver.New(cfg, "test")
+	server, err := mcpserver.New(cfg, "test")
+	if err != nil {
+		t.Fatalf("mcpserver.New: %v", err)
+	}
 
 	serverT, clientT := mcp.NewInMemoryTransports()
 	if _, err := server.Connect(ctx, serverT, nil); err != nil {

@@ -61,7 +61,10 @@ func runServe(cmd *cobra.Command, opts *rootOptions, so *serveOptions) error {
 	if err != nil {
 		return err
 	}
-	server := mcpserver.New(cfg, opts.version)
+	server, err := mcpserver.New(cfg, opts.version)
+	if err != nil {
+		return err
+	}
 
 	groups := ""
 	if cfg.EnablePlatform {

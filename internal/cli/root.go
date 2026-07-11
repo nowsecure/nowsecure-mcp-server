@@ -67,6 +67,8 @@ Environment:
                              NSMCP_API_TOKEN, NSMCP_API_KEY)
   NOWSECURE_API_URL          API base URL override (default https://api.nowsecure.com)
   NOWSECURE_OAUTH_CLIENT_ID  OAuth client id for "nsmcp login"
+  NSMCP_LOG_FILE             opt-in tool-call log path (JSON lines, append-mode 0600);
+                             unset (default) means no logging
 
 Authenticate with "nsmcp login", or mint a token at
 https://app.nowsecure.com/account#token.`,

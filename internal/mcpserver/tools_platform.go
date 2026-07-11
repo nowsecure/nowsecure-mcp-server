@@ -11,7 +11,7 @@ import (
 )
 
 func (s *srv) registerPlatformTools(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "list_apps",
 		Description: "List mobile apps in your NowSecure portfolio with their latest security score, rating, and open vulnerability count. " +
 			"The primary starting point for DevSecOps triage. Returns a compact row per app (title, platform, package, score, rating, vulnerability_count, app_ref, assessment_ref, group, group_ref — rows are the group-discovery source for group_refs params). " +
@@ -21,9 +21,9 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Cursor-paginated: pass the returned next_cursor to fetch the next page. Use threshold_score/threshold_severity to focus on the riskiest apps. " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry the total match count, the page envelope, and — with include_summary — the portfolio summary); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.listApps))
+	}, s.listApps)
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "list_assessments",
 		Description: "List the scan history of an app, newest first, with score, rating, status, and finding counts by severity. " +
 			"Requires app_ref, package, or appstore_key — the API rejects portfolio-wide queries, so to survey many apps call list_apps first and query per app. " +
@@ -32,9 +32,9 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Further filter by platform/status/rating/type/date. Cursor-paginated. " +
 			"Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.listAssessments))
+	}, s.listAssessments)
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "get_assessment_findings",
 		Description: "Get the findings for one assessment as a compact, triage-ready list (check_id, title, category, severity, affected, cvss), sorted most-severe first. " +
 			"Evidence, raw context, and recommendation prose are deliberately stripped to keep the response small — for remediation, call get_finding with a check_id, " +
@@ -45,9 +45,9 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"The default omits artifact-category inventory rows (counts still show them as counts.artifacts; include_artifacts=true restores them); min_severity=low returns exactly the scored vulnerabilities behind vulnerability_count. " +
 			"Default text block is a compact table (one row per finding; '# ' comment lines carry counts and the report/status/created_at envelope), forced to json when check_ids or include_recommendations pulls in recommendation prose; pass format:\"json\" to mirror the full JSON in the text block otherwise. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.getAssessmentFindings))
+	}, s.getAssessmentFindings)
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "get_finding",
 		Description: "Get documentation for a single finding by key or id: title, category, severity/CVSS range, description, steps to reproduce, testing method, and markdown remediation guidance. " +
 			"Static reference data (no per-app evidence). Use include=[...] to fetch only specific prose sections (e.g. just remediation). " +
@@ -55,9 +55,9 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"platform is omitted for findings that apply to both android and ios; application_count equals get_apps_affected_by_finding's total. " +
 			"Use after list_apps/get_assessment_findings to understand or remediate a specific finding.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.getFinding))
+	}, s.getFinding)
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "search_findings",
 		Description: "Search the finding catalog by free text: case-insensitive substring match over finding key, title, description/impact prose, and category. " +
 			"The front door when you know a topic or risk but not a finding's key — e.g. every finding related to \"cleartext\", \"keyboard cache\", or \"janus\". " +
@@ -67,9 +67,9 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Deprecated checks are excluded by default (excluded_deprecated counts matches that were hidden; include_deprecated=true restores them, each row's covered_by naming its replacements). " +
 			"Default text block is a compact table (one row per match; '# ' comment lines carry the query and totals); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.searchFindings))
+	}, s.searchFindings)
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "get_apps_affected_by_finding",
 		Description: "Fleet-wide impact: list portfolio apps whose latest assessment is affected by a given finding (key or id). " +
 			"Answers 'which of my apps are exposed to X?'. Cursor-paginated; filter by platform, group, or search text. " +
@@ -77,7 +77,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"A platform filter is orthogonal to the finding's own platform (e.g. an android-only finding with platform=ios) and legitimately returns an empty list with total:0. " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry finding/total and the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.getAppsAffectedByFinding))
+	}, s.getAppsAffectedByFinding)
 }
 
 // ---- inputs ---------------------------------------------------------------

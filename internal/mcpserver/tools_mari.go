@@ -11,7 +11,7 @@ import (
 )
 
 func (s *srv) registerMARITools(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "list_mari_apps",
 		Description: "List third-party apps in your NowSecure MARI (Mobile App Risk Intelligence) catalog with their risk score, letter rating (A-F), and risk category (LOW/MEDIUM/HIGH). " +
 			"The starting point for third-party / supply-chain app vetting. risk_score (0-100, HIGHER is worse — the opposite polarity of Platform scores) is bucketed upstream into risk_rating (A-F) and risk_category (LOW/MEDIUM/HIGH); the thresholds are upstream-defined and the axes don't align intuitively (category LOW reaches C-rated scores ~50), so filter on the axis your policy uses. " +
@@ -19,9 +19,9 @@ func (s *srv) registerMARITools(server *mcp.Server) {
 			"Correlate an app with the Platform portfolio by matching (package, platform). " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry total and the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.listMARIApps))
+	}, s.listMARIApps)
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "get_mari_assessment",
 		Description: "Get the risk profile for one third-party app by its MARI assessment ref: title/package/platform identity (always populated), overall risk score/rating/category, NowSecure risk, findings summary, and a compact list of findings — " +
 			"upstream reports only the findings the app is affected by (the summary counts both affected and checked). risk_score is 0-100 where HIGHER is worse. " +
@@ -29,7 +29,7 @@ func (s *srv) registerMARITools(server *mcp.Server) {
 			"Finding rows omit short_description prose by default — pull it back with check_ids=[...] for specific findings or include_descriptions=true for every row. " +
 			"Use expand to opt into heavier sections (permissions, trackingDomains, networkConnections, librariesAndSdks, aiUsage, iosMetadata, appInfo) for a deeper due-diligence report; expanded librariesAndSdks is shaped down to its summary plus CVE-bearing components only.",
 		Annotations: readOnlyAPI(),
-	}, denilOutput(s.getMARIAssessment))
+	}, s.getMARIAssessment)
 }
 
 type listMARIInput struct {

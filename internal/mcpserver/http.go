@@ -112,9 +112,14 @@ func newHTTPHandler(ctx context.Context, cfg *config.Config, version string, opt
 	}
 	verifier := bearerVerifier(provider, opts.Audience)
 
+	logger, err := newToolLogger()
+	if err != nil {
+		return nil, err
+	}
+
 	// Per-request upstream client: verify -> (pass through | exchange) -> bearer.
 	base := nsclient.New(cfg.BaseURL, cfg.Token, nsclient.WithUserAgent("nsmcp/"+version))
-	s := &srv{base: base}
+	s := &srv{base: base, logger: logger}
 	s.resolve = func(ctx context.Context) (*nsclient.Client, error) {
 		ti := tokenInfoFromContext(ctx)
 		if ti == nil {
@@ -131,6 +136,7 @@ func newHTTPHandler(ctx context.Context, cfg *config.Config, version string, opt
 		return s.base.WithToken(upstream), nil
 	}
 	server := s.newServer(cfg, version)
+	logServerStart(logger, version, "http", cfg)
 
 	streamable := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
 	protected := auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{

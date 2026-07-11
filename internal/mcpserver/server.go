@@ -4,6 +4,7 @@ package mcpserver
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -18,10 +19,12 @@ import (
 // base is the upstream client. In stdio mode it is used directly; in HTTP
 // resource-server mode it supplies the shared transport/base URL and each
 // request derives a per-caller client from it (see http.go). resolve returns
-// the client to use for the request carried by ctx.
+// the client to use for the request carried by ctx. logger is the
+// NSMCP_LOG_FILE tool-call logger (a no-op when that env var is unset).
 type srv struct {
 	base    *nsclient.Client
 	resolve func(context.Context) (*nsclient.Client, error)
+	logger  *slog.Logger
 }
 
 // api returns the upstream client for the current request. Tool handlers call
@@ -34,12 +37,18 @@ func (s *srv) api(ctx context.Context) (*nsclient.Client, error) {
 // New builds an MCP server with the tool groups enabled in cfg, served over a
 // single static bearer token (the stdio path). Behavior is unchanged from a
 // plain one-client server: resolve always returns that static client.
-func New(cfg *config.Config, version string) *mcp.Server {
+func New(cfg *config.Config, version string) (*mcp.Server, error) {
+	logger, err := newToolLogger()
+	if err != nil {
+		return nil, err
+	}
 	s := &srv{
-		base: nsclient.New(cfg.BaseURL, cfg.Token, nsclient.WithUserAgent("nsmcp/"+version)),
+		base:   nsclient.New(cfg.BaseURL, cfg.Token, nsclient.WithUserAgent("nsmcp/"+version)),
+		logger: logger,
 	}
 	s.resolve = func(context.Context) (*nsclient.Client, error) { return s.base, nil }
-	return s.newServer(cfg, version)
+	logServerStart(logger, version, "stdio", cfg)
+	return s.newServer(cfg, version), nil
 }
 
 // newServer wires the tools onto a fresh mcp.Server. Shared by the stdio (New)
@@ -59,13 +68,13 @@ func (s *srv) newServer(cfg *config.Config, version string) *mcp.Server {
 	server.AddReceivingMiddleware(withTokenInfo)
 
 	// Always-available local utility.
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "decode_nowsecure_url",
 		Description: "Parse a NowSecure console URL or deep link into the ids the other tools take, under their exact parameter names: platform, package, app_ref, assessment_ref (which also carries numeric task ids from URLs), mari_assessment_ref, group_refs, and finding. " +
 			"Pass mari_assessment_ref to get_mari_assessment as its assessment_ref. " +
 			"Pure/local: makes no API calls. Unparseable id-like segments are reported in a warnings array rather than dropped silently.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
-	}, denilOutput(s.decodeURL))
+	}, s.decodeURL)
 
 	if cfg.EnablePlatform {
 		s.registerPlatformTools(server)
