@@ -26,7 +26,7 @@ func newToolLogger() (*slog.Logger, error) {
 	if path == "" {
 		return slog.New(slog.DiscardHandler), nil
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // NSMCP_LOG_FILE is an operator-set config path, not attacker input
 	if err != nil {
 		return nil, fmt.Errorf("open %s %q: %w", logFileEnv, path, err)
 	}

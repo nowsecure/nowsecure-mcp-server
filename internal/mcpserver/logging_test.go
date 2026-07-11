@@ -38,7 +38,7 @@ func TestNSMCPLogFile_ToolCallAndServerStart(t *testing.T) {
 		t.Fatalf("read log file: %v", err)
 	}
 	var sawStart, sawCall bool
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
 		var rec map[string]any
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			t.Fatalf("log line is not JSON: %v: %s", err, line)

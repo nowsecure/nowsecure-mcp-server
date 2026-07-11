@@ -1,6 +1,7 @@
 package mcpserver_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -84,7 +85,7 @@ func TestToolSchemasGolden(t *testing.T) {
 	got = append(got, '\n')
 
 	if *update {
-		if err := os.WriteFile(toolSchemasGoldenPath, got, 0o644); err != nil {
+		if err := os.WriteFile(toolSchemasGoldenPath, got, 0o600); err != nil {
 			t.Fatalf("write golden file: %v", err)
 		}
 		return
@@ -94,7 +95,7 @@ func TestToolSchemasGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden file %s: %v (run with -update to create it)", toolSchemasGoldenPath, err)
 	}
-	if string(got) == string(want) {
+	if bytes.Equal(got, want) {
 		return
 	}
 	t.Errorf("tool schema snapshot changed from %s — this is the model-facing contract every MCP "+
