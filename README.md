@@ -1,4 +1,4 @@
-# nsmcp
+# nsmcp (beta)
 
 A small **Model Context Protocol (MCP) server** for two NowSecure products —
 **[NowSecure Platform](https://www.nowsecure.com/products/nowsecure-platform/)**
