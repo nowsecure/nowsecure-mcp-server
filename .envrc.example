@@ -1,6 +1,22 @@
 # Copy to .envrc (direnv) or source manually. Do NOT commit the real token.
+# Full reference: README.md "Configuration".
+
 # Mint a token at https://app.nowsecure.com/account#token
 export NOWSECURE_API_TOKEN="paste-your-token-here"
 
-# Optional: override the API base URL (default https://api.nowsecure.com)
+# Optional: override the API base URL (default https://api.nowsecure.com).
+# Must be https; plain http is allowed only for localhost.
 # export NOWSECURE_API_URL="https://api.nowsecure.com"
+
+# Optional: opt-in tool-call log (one JSON line per call; never arguments or results).
+# export NSMCP_LOG_FILE="./nsmcp.log"
+
+# nsmcp login (device-code OAuth) — no default client ID ships yet.
+# export NOWSECURE_OAUTH_CLIENT_ID="auth0-cli-client-id"
+# Non-production tenants only, paired with NOWSECURE_API_URL:
+# export NOWSECURE_OAUTH_ISSUER="https://id.nowsecure.com"
+# export NOWSECURE_OAUTH_AUDIENCE="https://app.nowsecure.com"
+
+# serve --http only: OAuth client credentials for on-behalf-of token exchange.
+# export NSMCP_OBO_CLIENT_ID="obo-client-id"
+# export NSMCP_OBO_CLIENT_SECRET="obo-client-secret"
