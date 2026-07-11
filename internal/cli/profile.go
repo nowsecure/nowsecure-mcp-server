@@ -19,8 +19,14 @@ import (
 func newProfileCmd(opts *rootOptions) *cobra.Command {
 	profile := &cobra.Command{
 		Use:   "profile",
-		Short: "Call the NowSecure REST API directly (verification)",
-		Long:  "Call the NowSecure REST API directly and print pretty JSON to stdout.\nHandy for verifying endpoint shapes against a live tenant.",
+		Short: "Verify tools and endpoints against a live tenant",
+		Long: `Verification surface for a live tenant, in three layers:
+
+  call    invoke any MCP tool in-process — the exact result agents see
+  budget  measure every tool's response size against byte budgets (CI guard)
+  others  raw REST probes that drive the API client directly (endpoint shapes)
+
+Output is pretty JSON to stdout.`,
 		// A parent command with subcommands is, by cobra's default, non-runnable
 		// and treats "profile bogus" as a help request (no error). Giving it a
 		// RunE makes bare "profile" print help but "profile <unknown>" error.
@@ -33,6 +39,8 @@ func newProfileCmd(opts *rootOptions) *cobra.Command {
 	}
 
 	profile.AddCommand(
+		newProfileCallCmd(opts),
+		newProfileBudgetCmd(opts),
 		&cobra.Command{
 			Use:   "apps",
 			Short: "List portfolio apps",
