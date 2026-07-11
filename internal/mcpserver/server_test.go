@@ -731,6 +731,142 @@ func TestGetAssessmentFindings_TableDefault(t *testing.T) {
 	}
 }
 
+// requireJSONArray asserts that structured content's field at key round-trips
+// as a JSON array, never null — the regression denilSlices guards against: a
+// bare nil Go slice marshals to JSON null, which breaks an MCP client
+// validating structuredContent against an array-typed output schema.
+func requireJSONArray(t *testing.T, m map[string]any, key string) []any {
+	t.Helper()
+	v, ok := m[key].([]any)
+	if !ok {
+		t.Fatalf("%s = %v (%T), want a JSON array, not null", key, m[key], m[key])
+	}
+	return v
+}
+
+// callTool is a small CallTool wrapper shared by the empty-rows regression
+// tests: it fails the test on a protocol error or a tool error.
+func callTool(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatalf("CallTool %s: %v", name, err)
+	}
+	if res.IsError {
+		t.Fatalf("CallTool %s: result IsError: %s", name, contentText(res))
+	}
+	return res
+}
+
+// TestEmptyRowsYieldJSONArrays drives every list-shaped tool with a backend
+// that reports zero rows and asserts each tool's array-typed field marshals as
+// [] rather than null (see denilSlices). get_assessment_findings and
+// get_mari_assessment are the two that append into a nil slice and previously
+// shipped null here; the rest are covered too so the invariant holds
+// server-wide, not just where it happened to break.
+func TestEmptyRowsYieldJSONArrays(t *testing.T) {
+	t.Run("list_apps", func(t *testing.T) {
+		cfg := &config.Config{
+			Token:          "test-token",
+			EnablePlatform: true,
+			BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false},"summaryInfo":{"totalResults":0}}`))
+			}),
+		}
+		res := callTool(t, session(t, cfg), "list_apps", map[string]any{})
+		requireJSONArray(t, structured(t, res), "apps")
+	})
+
+	t.Run("list_assessments", func(t *testing.T) {
+		cfg := &config.Config{
+			Token:          "test-token",
+			EnablePlatform: true,
+			BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
+			}),
+		}
+		res := callTool(t, session(t, cfg), "list_assessments", map[string]any{"app_ref": "app-1"})
+		requireJSONArray(t, structured(t, res), "assessments")
+	})
+
+	t.Run("get_assessment_findings", func(t *testing.T) {
+		cfg := &config.Config{
+			Token:          "test-token",
+			EnablePlatform: true,
+			BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/v2/portfolio/applications":
+					_, _ = w.Write([]byte(`{"rows":[{"ref":"app-1","assessmentRef":"as-1","platform":"android","package":"com.x","group":{"ref":"g1"}}],"pageInfo":{"hasNextPage":false}}`))
+				case "/app/android/com.x/assessment":
+					_, _ = w.Write([]byte(`[{"ref":"as-1","task":55,"task_status":"completed","created":"2024-06-01T00:00:00Z"}]`))
+				case "/assessment/55/findings":
+					_, _ = w.Write([]byte(`[]`))
+				default:
+					t.Errorf("unexpected path %q", r.URL.Path)
+				}
+			}),
+		}
+		res := callTool(t, session(t, cfg), "get_assessment_findings", map[string]any{"app_ref": "app-1"})
+		requireJSONArray(t, structured(t, res), "findings")
+	})
+
+	t.Run("search_findings", func(t *testing.T) {
+		cfg := &config.Config{
+			Token:          "test-token",
+			EnablePlatform: true,
+			BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/graphql" {
+					t.Errorf("unexpected path %q", r.URL.Path)
+				}
+				_, _ = w.Write([]byte(`{"data":{"findings":{"list":[]}}}`))
+			}),
+		}
+		res := callTool(t, session(t, cfg), "search_findings", map[string]any{"query": "no-such-topic"})
+		requireJSONArray(t, structured(t, res), "findings")
+	})
+
+	t.Run("get_apps_affected_by_finding", func(t *testing.T) {
+		cfg := &config.Config{
+			Token:          "test-token",
+			EnablePlatform: true,
+			BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v2/portfolio/findings/some_check/applications" {
+					t.Errorf("unexpected path %q", r.URL.Path)
+				}
+				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false},"summaryInfo":{"totalResults":0}}`))
+			}),
+		}
+		res := callTool(t, session(t, cfg), "get_apps_affected_by_finding", map[string]any{"finding": "some_check"})
+		requireJSONArray(t, structured(t, res), "apps")
+	})
+
+	t.Run("list_mari_apps", func(t *testing.T) {
+		cfg := &config.Config{
+			Token:      "test-token",
+			EnableMARI: true,
+			BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"totalResults":0,"start":0,"end":0}}`))
+			}),
+		}
+		res := callTool(t, session(t, cfg), "list_mari_apps", map[string]any{})
+		requireJSONArray(t, structured(t, res), "apps")
+	})
+
+	t.Run("get_mari_assessment", func(t *testing.T) {
+		cfg := &config.Config{
+			Token:      "test-token",
+			EnableMARI: true,
+			BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+				// No "findings" key at all: the raw decode leaves it nil, the
+				// shape that used to reach the marshaler as null.
+				_, _ = w.Write([]byte(`{"createdAt":"2024-01-01","riskScore":10,"riskRating":"A","riskCategory":"LOW","summaryInfo":{"totalFindingsAffected":0,"totalFindingsChecked":9}}`))
+			}),
+		}
+		res := callTool(t, session(t, cfg), "get_mari_assessment", map[string]any{"assessment_ref": "ri-1"})
+		requireJSONArray(t, structured(t, res), "findings")
+	})
+}
+
 // findingIDs pulls the given key out of each element of the result's "findings"
 // array in the structured content.
 func findingIDs(t *testing.T, res *mcp.CallToolResult, key string) []string {

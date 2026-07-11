@@ -65,7 +65,7 @@ func (s *srv) newServer(cfg *config.Config, version string) *mcp.Server {
 			"Pass mari_assessment_ref to get_mari_assessment as its assessment_ref. " +
 			"Pure/local: makes no API calls. Unparseable id-like segments are reported in a warnings array rather than dropped silently.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
-	}, s.decodeURL)
+	}, denilOutput(s.decodeURL))
 
 	if cfg.EnablePlatform {
 		s.registerPlatformTools(server)

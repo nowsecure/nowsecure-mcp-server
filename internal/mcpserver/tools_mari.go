@@ -19,7 +19,7 @@ func (s *srv) registerMARITools(server *mcp.Server) {
 			"Correlate an app with the Platform portfolio by matching (package, platform). " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry total and the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, s.listMARIApps)
+	}, denilOutput(s.listMARIApps))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_mari_assessment",
@@ -29,7 +29,7 @@ func (s *srv) registerMARITools(server *mcp.Server) {
 			"Finding rows omit short_description prose by default — pull it back with check_ids=[...] for specific findings or include_descriptions=true for every row. " +
 			"Use expand to opt into heavier sections (permissions, trackingDomains, networkConnections, librariesAndSdks, aiUsage, iosMetadata, appInfo) for a deeper due-diligence report; expanded librariesAndSdks is shaped down to its summary plus CVE-bearing components only.",
 		Annotations: readOnlyAPI(),
-	}, s.getMARIAssessment)
+	}, denilOutput(s.getMARIAssessment))
 }
 
 type listMARIInput struct {

@@ -21,7 +21,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Cursor-paginated: pass the returned next_cursor to fetch the next page. Use threshold_score/threshold_severity to focus on the riskiest apps. " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry the total match count, the page envelope, and — with include_summary — the portfolio summary); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, s.listApps)
+	}, denilOutput(s.listApps))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_assessments",
@@ -32,7 +32,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Further filter by platform/status/rating/type/date. Cursor-paginated. " +
 			"Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, s.listAssessments)
+	}, denilOutput(s.listAssessments))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_assessment_findings",
@@ -45,7 +45,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"The default omits artifact-category inventory rows (counts still show them as counts.artifacts; include_artifacts=true restores them); min_severity=low returns exactly the scored vulnerabilities behind vulnerability_count. " +
 			"Default text block is a compact table (one row per finding; '# ' comment lines carry counts and the report/status/created_at envelope), forced to json when check_ids or include_recommendations pulls in recommendation prose; pass format:\"json\" to mirror the full JSON in the text block otherwise. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, s.getAssessmentFindings)
+	}, denilOutput(s.getAssessmentFindings))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_finding",
@@ -55,7 +55,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"platform is omitted for findings that apply to both android and ios; application_count equals get_apps_affected_by_finding's total. " +
 			"Use after list_apps/get_assessment_findings to understand or remediate a specific finding.",
 		Annotations: readOnlyAPI(),
-	}, s.getFinding)
+	}, denilOutput(s.getFinding))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "search_findings",
@@ -67,7 +67,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Deprecated checks are excluded by default (excluded_deprecated counts matches that were hidden; include_deprecated=true restores them, each row's covered_by naming its replacements). " +
 			"Default text block is a compact table (one row per match; '# ' comment lines carry the query and totals); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, s.searchFindings)
+	}, denilOutput(s.searchFindings))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_apps_affected_by_finding",
@@ -77,7 +77,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"A platform filter is orthogonal to the finding's own platform (e.g. an android-only finding with platform=ios) and legitimately returns an empty list with total:0. " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry finding/total and the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
-	}, s.getAppsAffectedByFinding)
+	}, denilOutput(s.getAppsAffectedByFinding))
 }
 
 // ---- inputs ---------------------------------------------------------------
