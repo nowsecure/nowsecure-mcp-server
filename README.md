@@ -13,15 +13,10 @@ itself.
 
 ## Supported products and tools
 
-Tools are grouped by product. Each group is toggled by a serve flag — both
-are enabled by default, and at least one must be enabled.
+Tools are grouped by product. Each group is toggled by the serve flag shown —
+both are enabled by default, and at least one must be enabled.
 
-| Product | Tools | Flag |
-| --- | --- | :---: |
-| **NowSecure Platform** | `list_apps` · `list_assessments` · `get_assessment_findings` · `get_finding` · `search_findings` · `get_apps_affected_by_finding` | `--platform` |
-| **NowSecure MARI** | `list_mari_apps` · `get_mari_assessment` | `--mari` |
-
-### NowSecure Platform
+### NowSecure Platform (`--platform`)
 
 Triage your own mobile app portfolio: scores, findings, fleet-wide impact, and
 remediation guidance.
@@ -35,7 +30,7 @@ remediation guidance.
 | `search_findings` | Free-text search over the finding catalog (key, title, description, category) — returns finding keys when you only know a topic or risk. |
 | `get_apps_affected_by_finding` | Fleet-wide impact: which portfolio apps' latest assessments are affected by a given finding. |
 
-### NowSecure MARI
+### NowSecure MARI (`--mari`)
 
 Vet vendor and third-party apps you didn't build, by risk score, letter
 rating, and findings.
