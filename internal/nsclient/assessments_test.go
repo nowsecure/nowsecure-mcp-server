@@ -6,6 +6,7 @@ package nsclient
 // category lowercasing).
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -100,6 +101,44 @@ func TestListAssessments_EnumLowercasedUpstream(t *testing.T) {
 	}
 	if !strings.Contains(sent, "critical") || strings.Contains(sent, "Critical") {
 		t.Errorf("filters = %q, want lowercased rating", sent)
+	}
+}
+
+// TestListAssessments_PageSizeDefaultAndClamp guards the small-page contract:
+// the default page size is always sent explicitly (never left to upstream,
+// whose default could drift), an oversized page_size is clamped, and a
+// cursor's recovered stride is reused but subject to the same clamp.
+func TestListAssessments_PageSizeDefaultAndClamp(t *testing.T) {
+	var gotPageSize string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPageSize = r.URL.Query().Get("pageSize")
+		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
+	})
+	ctx := t.Context()
+	cases := []struct {
+		name string
+		p    ListAssessmentsParams
+		want string
+	}{
+		{"default", ListAssessmentsParams{ApplicationRef: "app-1"}, "10"},
+		{"explicit within cap", ListAssessmentsParams{ApplicationRef: "app-1", PageSize: 25}, "25"},
+		{"explicit over cap clamped", ListAssessmentsParams{ApplicationRef: "app-1", PageSize: 100}, "25"},
+		{"cursor stride reused", ListAssessmentsParams{
+			ApplicationRef: "app-1",
+			Cursor:         base64.StdEncoding.EncodeToString([]byte(`{"limit":5,"offset":5}`)),
+		}, "5"},
+		{"cursor stride clamped", ListAssessmentsParams{
+			ApplicationRef: "app-1",
+			Cursor:         base64.StdEncoding.EncodeToString([]byte(`{"limit":50,"offset":50}`)),
+		}, "25"},
+	}
+	for _, tc := range cases {
+		if _, err := c.ListAssessments(ctx, tc.p); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if gotPageSize != tc.want {
+			t.Errorf("%s: pageSize sent = %q, want %q", tc.name, gotPageSize, tc.want)
+		}
 	}
 }
 

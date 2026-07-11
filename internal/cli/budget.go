@@ -44,6 +44,7 @@ type budgetRow struct {
 var defaultBudgets = map[string]int{
 	"list_apps.default":                        10_000,
 	"list_assessments.default":                 16_000,
+	"list_assessments.max_page":                32_000,
 	"get_assessment_findings.default":          40_000,
 	"get_assessment_findings.min_severity_low": 16_000,
 	"get_assessment_findings.recommendations":  175_000,
@@ -209,6 +210,9 @@ func budgetSuite(refs discoveredRefs, budgets map[string]int) []budgetCase {
 	cases := []budgetCase{
 		{Name: "list_apps.default", Tool: "list_apps", Args: map[string]any{}},
 		{Name: "list_assessments.default", Tool: "list_assessments", Args: map[string]any{"app_ref": refs.AppRef}},
+		// page_size far above the cap: the clamp must hold the page at its max
+		// stride (upstream itself would serve the full oversized page).
+		{Name: "list_assessments.max_page", Tool: "list_assessments", Args: map[string]any{"app_ref": refs.AppRef, "page_size": 100}},
 		{Name: "get_assessment_findings.default", Tool: "get_assessment_findings", Args: map[string]any{"app_ref": refs.AppRef}},
 		{Name: "get_assessment_findings.min_severity_low", Tool: "get_assessment_findings", Args: map[string]any{"app_ref": refs.AppRef, "min_severity": "low"}},
 		{Name: "get_assessment_findings.recommendations", Tool: "get_assessment_findings", Args: map[string]any{"app_ref": refs.AppRef, "include_recommendations": true}},

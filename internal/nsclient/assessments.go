@@ -63,6 +63,15 @@ func validateEnum(field string, values, allowed []string) ([]string, error) {
 
 // ---- assessment list (GET /v2/assessments) --------------------------------
 
+// Assessments list newest-first and agents almost always want only the last
+// few scans, so the default page stays small and an explicit page_size is
+// clamped — upstream imposes no cap of its own and happily serves 100+ row
+// pages. Deeper history pages through the cursor at the chosen stride.
+const (
+	defaultAssessmentsPageSize = 10
+	maxAssessmentsPageSize     = 25
+)
+
 // ListAssessmentsParams filters and paginates GET /v2/assessments.
 type ListAssessmentsParams struct {
 	ApplicationRef string   // limit to one app UUID
@@ -182,6 +191,12 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 	pageSize := p.PageSize
 	if pageSize == 0 {
 		pageSize = pageSizeFromCursor(p.Cursor)
+	}
+	if pageSize == 0 {
+		pageSize = defaultAssessmentsPageSize
+	}
+	if pageSize > maxAssessmentsPageSize {
+		pageSize = maxAssessmentsPageSize
 	}
 	setInt(q, "pageSize", pageSize)
 	setStr(q, "cursor", p.Cursor)

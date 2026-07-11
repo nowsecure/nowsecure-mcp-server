@@ -29,7 +29,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Requires app_ref, package, or appstore_key — the API rejects portfolio-wide queries, so to survey many apps call list_apps first and query per app. " +
 			"Note: package/appstore_key scoping merges the history of EVERY app sharing that id across groups; use app_ref for one app's history. " +
 			"Rows with track=store_monitor come from store monitoring, not lab analysis: their finding counts use a different upstream source than get_assessment_findings (which cannot serve them — check findings_available). " +
-			"Further filter by platform/status/rating/type/date. Cursor-paginated. " +
+			"Further filter by platform/status/rating/type/date. Cursor-paginated: pages default to the 10 newest scans and page_size caps at 25 (larger values are clamped) — follow next_cursor for older history. " +
 			"Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
 	}, s.listAssessments)
@@ -107,7 +107,7 @@ type listAssessmentsInput struct {
 	Since       string   `json:"since,omitempty" jsonschema:"only assessments created on/after this date (YYYY-MM-DD or RFC3339)"`
 	Until       string   `json:"until,omitempty" jsonschema:"only assessments created on/before this date (YYYY-MM-DD or RFC3339)"`
 	OrderBy     string   `json:"order_by,omitempty" jsonschema:"sort order: created_at, -created_at, build_version, package_version (default -created_at)"`
-	PageSize    int      `json:"page_size,omitempty" jsonschema:"max assessments to return in this page"`
+	PageSize    int      `json:"page_size,omitempty" jsonschema:"max assessments to return in this page (default 10, max 25 — larger values are clamped; page with cursor for older history)"`
 	Cursor      string   `json:"cursor,omitempty" jsonschema:"pagination cursor from a previous page's next_cursor"`
 	Format      string   `json:"format,omitempty" jsonschema:"text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON"`
 }

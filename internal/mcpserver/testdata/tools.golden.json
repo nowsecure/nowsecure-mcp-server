@@ -955,7 +955,7 @@
   },
   {
     "name": "list_assessments",
-    "description": "List the scan history of an app, newest first, with score, rating, status, and finding counts by severity. Requires app_ref, package, or appstore_key — the API rejects portfolio-wide queries, so to survey many apps call list_apps first and query per app. Note: package/appstore_key scoping merges the history of EVERY app sharing that id across groups; use app_ref for one app's history. Rows with track=store_monitor come from store monitoring, not lab analysis: their finding counts use a different upstream source than get_assessment_findings (which cannot serve them — check findings_available). Further filter by platform/status/rating/type/date. Cursor-paginated. Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
+    "description": "List the scan history of an app, newest first, with score, rating, status, and finding counts by severity. Requires app_ref, package, or appstore_key — the API rejects portfolio-wide queries, so to survey many apps call list_apps first and query per app. Note: package/appstore_key scoping merges the history of EVERY app sharing that id across groups; use app_ref for one app's history. Rows with track=store_monitor come from store monitoring, not lab analysis: their finding counts use a different upstream source than get_assessment_findings (which cannot serve them — check findings_available). Further filter by platform/status/rating/type/date. Cursor-paginated: pages default to the 10 newest scans and page_size caps at 25 (larger values are clamped) — follow next_cursor for older history. Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -994,7 +994,7 @@
           "type": "string"
         },
         "page_size": {
-          "description": "max assessments to return in this page",
+          "description": "max assessments to return in this page (default 10, max 25 — larger values are clamped; page with cursor for older history)",
           "type": "integer"
         },
         "platforms": {
