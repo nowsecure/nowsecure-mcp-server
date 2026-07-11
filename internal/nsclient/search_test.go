@@ -1,7 +1,6 @@
 package nsclient
 
 import (
-	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -36,7 +35,7 @@ func searchCatalogClient(t *testing.T) (*Client, *int) {
 
 func TestSearchFindings_KeyAndTitleMatch(t *testing.T) {
 	c, _ := searchCatalogClient(t)
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "Janus"})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "Janus"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -63,7 +62,7 @@ func TestSearchFindings_KeyAndTitleMatch(t *testing.T) {
 
 func TestSearchFindings_IncludeDeprecatedRestoresCoveredBy(t *testing.T) {
 	c, _ := searchCatalogClient(t)
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "janus", IncludeDeprecated: true})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "janus", IncludeDeprecated: true})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -89,7 +88,7 @@ func TestSearchFindings_IncludeDeprecatedRestoresCoveredBy(t *testing.T) {
 
 func TestSearchFindings_DescriptionOnlyMatchGetsSnippet(t *testing.T) {
 	c, _ := searchCatalogClient(t)
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "cleartext"})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "cleartext"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -110,7 +109,7 @@ func TestSearchFindings_DescriptionOnlyMatchGetsSnippet(t *testing.T) {
 
 func TestSearchFindings_SpacesMatchKeyUnderscores(t *testing.T) {
 	c, _ := searchCatalogClient(t)
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "janus vuln"})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "janus vuln"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -126,7 +125,7 @@ func TestSearchFindings_CategoryMatch(t *testing.T) {
 	c, _ := searchCatalogClient(t)
 
 	// Lab category, case-insensitively (upstream mixes "Resilience" in).
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "resilience"})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "resilience"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -141,7 +140,7 @@ func TestSearchFindings_CategoryMatch(t *testing.T) {
 	}
 
 	// Capability-group list ("Code Quality") is part of the category bucket.
-	got, err = c.SearchFindings(context.Background(), SearchFindingsParams{Query: "code quality"})
+	got, err = c.SearchFindings(t.Context(), SearchFindingsParams{Query: "code quality"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -153,7 +152,7 @@ func TestSearchFindings_CategoryMatch(t *testing.T) {
 func TestSearchFindings_PlatformFilterKeepsCrossPlatform(t *testing.T) {
 	c, _ := searchCatalogClient(t)
 	// "sensitive" hits keyboard_cache_check (cross-platform, title) and nothing ios.
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "sensitive", Platform: "IOS"})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "sensitive", Platform: "IOS"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -164,7 +163,7 @@ func TestSearchFindings_PlatformFilterKeepsCrossPlatform(t *testing.T) {
 		t.Errorf("platform = %q, want empty (applies to both)", got.Findings[0].Platform)
 	}
 	// The same query with an android filter also keeps the cross-platform row.
-	got, err = c.SearchFindings(context.Background(), SearchFindingsParams{Query: "janus", Platform: "ios"})
+	got, err = c.SearchFindings(t.Context(), SearchFindingsParams{Query: "janus", Platform: "ios"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -177,7 +176,7 @@ func TestSearchFindings_OrderingAndLimit(t *testing.T) {
 	c, _ := searchCatalogClient(t)
 	// "apk" hits android_janus_vuln (title) and apk_obfuscation_probe (key):
 	// same rank, so alphabetical by key.
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "apk"})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "apk"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -188,7 +187,7 @@ func TestSearchFindings_OrderingAndLimit(t *testing.T) {
 		t.Errorf("order = %v", []string{got.Findings[0].Key, got.Findings[1].Key})
 	}
 
-	got, err = c.SearchFindings(context.Background(), SearchFindingsParams{Query: "apk", Limit: 1})
+	got, err = c.SearchFindings(t.Context(), SearchFindingsParams{Query: "apk", Limit: 1})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -204,7 +203,7 @@ func TestSearchFindings_ProseMatchesCarrySnippets(t *testing.T) {
 	c, _ := searchCatalogClient(t)
 	// "attack" appears only in prose: android_janus_vuln's impact summary
 	// ("Attackers ...") and ios_ats_disabled's description ("... attacker ...").
-	got, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "attack"})
+	got, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "attack"})
 	if err != nil {
 		t.Fatalf("SearchFindings: %v", err)
 	}
@@ -221,13 +220,13 @@ func TestSearchFindings_ProseMatchesCarrySnippets(t *testing.T) {
 
 func TestSearchFindings_Validation(t *testing.T) {
 	c, hits := searchCatalogClient(t)
-	if _, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "  "}); err == nil || !strings.Contains(err.Error(), "query is required") {
+	if _, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "  "}); err == nil || !strings.Contains(err.Error(), "query is required") {
 		t.Errorf("blank query error = %v", err)
 	}
-	if _, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "x", Limit: -1}); err == nil || !strings.Contains(err.Error(), "must not be negative") {
+	if _, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "x", Limit: -1}); err == nil || !strings.Contains(err.Error(), "must not be negative") {
 		t.Errorf("negative limit error = %v", err)
 	}
-	if _, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "x", Platform: "windows"}); err == nil || !strings.Contains(err.Error(), "invalid platform") {
+	if _, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "x", Platform: "windows"}); err == nil || !strings.Contains(err.Error(), "invalid platform") {
 		t.Errorf("bad platform error = %v", err)
 	}
 	if *hits != 0 {
@@ -238,7 +237,7 @@ func TestSearchFindings_Validation(t *testing.T) {
 func TestSearchFindings_CatalogCached(t *testing.T) {
 	c, hits := searchCatalogClient(t)
 	for _, q := range []string{"janus", "cleartext", "keyboard"} {
-		if _, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: q}); err != nil {
+		if _, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: q}); err != nil {
 			t.Fatalf("SearchFindings(%q): %v", q, err)
 		}
 	}
@@ -251,7 +250,7 @@ func TestSearchFindings_GraphQLErrorPropagates(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"errors":[{"message":"boom"}]}`))
 	})
-	_, err := c.SearchFindings(context.Background(), SearchFindingsParams{Query: "janus"})
+	_, err := c.SearchFindings(t.Context(), SearchFindingsParams{Query: "janus"})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("error = %v, want the graphql message surfaced", err)
 	}

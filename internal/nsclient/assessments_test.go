@@ -6,7 +6,6 @@ package nsclient
 // category lowercasing).
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -17,7 +16,7 @@ import (
 
 func TestListAssessments_RequiresFilter(t *testing.T) {
 	c := New("http://unused", "tok")
-	if _, err := c.ListAssessments(context.Background(), ListAssessmentsParams{PlatformTypes: []string{"ios"}}); err == nil {
+	if _, err := c.ListAssessments(t.Context(), ListAssessmentsParams{PlatformTypes: []string{"ios"}}); err == nil {
 		t.Error("expected error when no app/package/appstore filter is given")
 	}
 }
@@ -36,7 +35,7 @@ func TestListAssessments_MappingAndJSON(t *testing.T) {
 			"pageInfo":{"hasNextPage":false,"cursor":"CURSOR-X"}
 		}`))
 	})
-	got, err := c.ListAssessments(context.Background(), ListAssessmentsParams{ApplicationRef: "app-1"})
+	got, err := c.ListAssessments(t.Context(), ListAssessmentsParams{ApplicationRef: "app-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +77,7 @@ func TestListAssessments_EnumValidation(t *testing.T) {
 		{"platforms", ListAssessmentsParams{ApplicationRef: "app-1", PlatformTypes: []string{"windows"}}, `invalid platforms "windows"`},
 	}
 	for _, tc := range cases {
-		_, err := c.ListAssessments(context.Background(), tc.p)
+		_, err := c.ListAssessments(t.Context(), tc.p)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", tc.name, err, tc.want)
 		}
@@ -91,7 +90,7 @@ func TestListAssessments_EnumLowercasedUpstream(t *testing.T) {
 		sent = r.URL.Query().Get("filters")
 		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
 	})
-	if _, err := c.ListAssessments(context.Background(), ListAssessmentsParams{
+	if _, err := c.ListAssessments(t.Context(), ListAssessmentsParams{
 		ApplicationRef: "app-1", Status: []string{"COMPLETED"}, Rating: []string{"Critical"},
 	}); err != nil {
 		t.Fatal(err)
@@ -133,7 +132,7 @@ func TestGetAssessmentFindings_ResolveAndCompact(t *testing.T) {
 		}
 	})
 
-	got, err := c.GetAssessmentFindings(context.Background(), FindingsParams{
+	got, err := c.GetAssessmentFindings(t.Context(), FindingsParams{
 		AppRef: "app-1", AssessmentRef: "as-new", AffectedOnly: true, IncludeRecs: true,
 	})
 	if err != nil {
@@ -167,7 +166,7 @@ func TestGetAssessmentFindings_ResolveAndCompact(t *testing.T) {
 	}
 
 	// Default (no include flag): recommendation prose is omitted.
-	lean, err := c.GetAssessmentFindings(context.Background(), FindingsParams{
+	lean, err := c.GetAssessmentFindings(t.Context(), FindingsParams{
 		AppRef: "app-1", AssessmentRef: "as-new", AffectedOnly: true,
 	})
 	if err != nil {
@@ -178,7 +177,7 @@ func TestGetAssessmentFindings_ResolveAndCompact(t *testing.T) {
 	}
 
 	// check_ids scopes the rows and restores the FULL recommendation.
-	deep, err := c.GetAssessmentFindings(context.Background(), FindingsParams{
+	deep, err := c.GetAssessmentFindings(t.Context(), FindingsParams{
 		AppRef: "app-1", AssessmentRef: "as-new", AffectedOnly: true, CheckIDs: []string{"crit1"},
 	})
 	if err != nil {
@@ -209,7 +208,7 @@ func TestGetAssessmentFindings_LatestWhenNoRef(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	})
-	got, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-x"})
+	got, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +231,7 @@ func TestGetAssessmentFindings_NumericTaskRef(t *testing.T) {
 		}
 	})
 	// A numeric ref matches the assessment's task id and resolves to its UUID.
-	got, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", AssessmentRef: "200"})
+	got, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "200"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,11 +262,11 @@ func TestGetAssessmentFindings_RefreshOnMiss(t *testing.T) {
 		}
 	})
 	// Call 1 resolves as-1 from the first list and caches it (1 list hit).
-	if _, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-1"}); err != nil {
+	if _, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-1"}); err != nil {
 		t.Fatalf("call 1: %v", err)
 	}
 	// Call 2 wants as-2, absent from the cached list -> forces one refresh.
-	got, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-2"})
+	got, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-2"})
 	if err != nil {
 		t.Fatalf("call 2: %v", err)
 	}
@@ -295,7 +294,7 @@ func TestGetAssessmentFindings_RefNeverFound(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	})
-	_, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", AssessmentRef: "ghost"})
+	_, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "ghost"})
 	if err == nil {
 		t.Fatal("expected error for an unknown ref")
 	}
@@ -319,7 +318,7 @@ func TestGetAssessmentFindings_NoAssessments(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	})
-	_, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1"})
+	_, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1"})
 	if err == nil || !strings.Contains(err.Error(), "no assessments found") {
 		t.Fatalf("error = %v, want 'no assessments found'", err)
 	}
@@ -342,7 +341,7 @@ func TestGetAssessmentFindings_NonCompletedFallback(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	})
-	got, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1"})
+	got, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +375,7 @@ func TestGetAssessmentFindings_ConcurrentNoRace(t *testing.T) {
 	})
 	// Prime the per-app cache so both goroutines read the same cached slice
 	// (the pre-fix bug sorted that shared slice in place under -race).
-	if _, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-1"}); err != nil {
+	if _, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-1"}); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -384,7 +383,7 @@ func TestGetAssessmentFindings_ConcurrentNoRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-2"}); err != nil {
+			if _, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-2"}); err != nil {
 				t.Errorf("concurrent call: %v", err)
 			}
 		}()
@@ -398,7 +397,7 @@ func TestGetAssessmentFindings_InvalidMinSeverity(t *testing.T) {
 		hits.Add(1)
 		t.Errorf("unexpected HTTP request to %q", r.URL.Path)
 	})
-	_, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", MinSeverity: "sev"})
+	_, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", MinSeverity: "sev"})
 	if err == nil || !strings.Contains(err.Error(), "info, warn, low, medium, high, critical") {
 		t.Fatalf("error = %v, want allowed-values list", err)
 	}
@@ -434,7 +433,7 @@ func TestGetAssessmentFindings_MinSeverityFilter(t *testing.T) {
 		return m
 	}
 	// min=warn keeps warn (and above) but drops info: warn ranks above info.
-	got, err := newC().GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", MinSeverity: "warn"})
+	got, err := newC().GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", MinSeverity: "warn"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +441,7 @@ func TestGetAssessmentFindings_MinSeverityFilter(t *testing.T) {
 		t.Errorf("min=warn severities = %v, want {warn,low} without info", s)
 	}
 	// min=low drops warn too: warn ranks below low.
-	got2, err := newC().GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", MinSeverity: "low"})
+	got2, err := newC().GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", MinSeverity: "low"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +467,7 @@ func TestGetAssessmentFindings_Limit(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	})
-	got, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", Limit: 1})
+	got, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +503,7 @@ func TestGetAssessmentFindings_FindingsCached(t *testing.T) {
 		}
 	})
 	for i := 0; i < 2; i++ {
-		if _, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-1"}); err != nil {
+		if _, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-1"}); err != nil {
 			t.Fatalf("call %d: %v", i, err)
 		}
 	}
@@ -538,7 +537,7 @@ func TestGetAssessmentFindings_ArtifactExclusion(t *testing.T) {
 		}
 		return out
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 
 	got, err := newC().GetAssessmentFindings(ctx, FindingsParams{AppRef: "app-1"})
 	if err != nil {
@@ -585,7 +584,7 @@ func TestGetAssessmentFindings_CategoryLowercased(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	})
-	got, err := c.GetAssessmentFindings(context.Background(), FindingsParams{AppRef: "app-1"})
+	got, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1"})
 	if err != nil {
 		t.Fatal(err)
 	}

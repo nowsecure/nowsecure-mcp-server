@@ -1,7 +1,6 @@
 package mcpserver
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -155,7 +154,7 @@ func oboOpts(fi *fakeIssuer) HTTPOptions {
 // behind an httptest server, returning that server's URL.
 func serveHandler(t *testing.T, opts HTTPOptions, cfg *config.Config) *httptest.Server {
 	t.Helper()
-	h, err := newHTTPHandler(context.Background(), cfg, "test", opts)
+	h, err := newHTTPHandler(t.Context(), cfg, "test", opts)
 	if err != nil {
 		t.Fatalf("newHTTPHandler: %v", err)
 	}
@@ -185,7 +184,7 @@ func connectMCP(t *testing.T, endpoint, token string) *mcp.ClientSession {
 		DisableStandaloneSSE: true,
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
-	cs, err := client.Connect(context.Background(), transport, nil)
+	cs, err := client.Connect(t.Context(), transport, nil)
 	if err != nil {
 		t.Fatalf("client connect: %v", err)
 	}
@@ -256,7 +255,7 @@ func TestHTTP_ValidTokenInitialize(t *testing.T) {
 		t.Errorf("server name = %q, want nsmcp", init.ServerInfo.Name)
 	}
 	// A full list round-trip confirms the authed session is usable.
-	res, err := cs.ListTools(context.Background(), nil)
+	res, err := cs.ListTools(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -342,7 +341,7 @@ func TestHTTP_OnBehalfOfExchangeAndCache(t *testing.T) {
 	cs := connectMCP(t, ts.URL, tok)
 
 	call := func() {
-		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 			Name:      "list_apps",
 			Arguments: map[string]any{},
 		})
@@ -401,7 +400,7 @@ func TestHTTP_PassThroughUsesInboundToken(t *testing.T) {
 	tok := fi.mint(t, opts.Audience, time.Now().Add(time.Hour), "openid")
 	cs := connectMCP(t, ts.URL, tok)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "list_apps",
 		Arguments: map[string]any{},
 	})
@@ -425,7 +424,7 @@ func TestHTTP_MissingOBOCredentials(t *testing.T) {
 	opts.OBOClientSecret = ""
 	cfg := &config.Config{Token: "unused", BaseURL: "https://api.invalid", EnablePlatform: true}
 
-	if _, err := newHTTPHandler(context.Background(), cfg, "test", opts); err == nil {
+	if _, err := newHTTPHandler(t.Context(), cfg, "test", opts); err == nil {
 		t.Fatal("expected an error when OBO credentials are incomplete")
 	}
 }
@@ -442,7 +441,7 @@ func TestTokenExchanger_SweepsDeadCacheEntries(t *testing.T) {
 	x.cache["expired"] = cachedToken{token: "old", exp: time.Now().Add(-time.Minute)}
 	x.cache["zero-exp"] = cachedToken{token: "old"}
 
-	got, err := x.upstreamToken(context.Background(), "inbound-token", time.Now().Add(time.Hour))
+	got, err := x.upstreamToken(t.Context(), "inbound-token", time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("upstreamToken: %v", err)
 	}

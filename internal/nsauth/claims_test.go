@@ -1,7 +1,6 @@
 package nsauth
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -79,7 +78,7 @@ func TestVerify(t *testing.T) {
 			}))
 			defer ts.Close()
 
-			err := Verify(context.Background(), ts.URL, "tok-1", ts.Client())
+			err := Verify(t.Context(), ts.URL, "tok-1", ts.Client())
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("Verify err = %v, want %v", err, tc.want)
 			}
@@ -92,7 +91,7 @@ func TestVerify_UnexpectedStatus(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer ts.Close()
-	err := Verify(context.Background(), ts.URL, "tok-1", ts.Client())
+	err := Verify(t.Context(), ts.URL, "tok-1", ts.Client())
 	if err == nil || errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("want transport error, got %v", err)
 	}

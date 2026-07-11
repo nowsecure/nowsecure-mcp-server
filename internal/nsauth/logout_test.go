@@ -2,7 +2,6 @@ package nsauth
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +32,7 @@ func TestLogout_RevokesAndDeletes(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := Logout(context.Background(), ts.URL, store, &out); err != nil {
+	if err := Logout(t.Context(), ts.URL, store, &out); err != nil {
 		t.Fatalf("Logout: %v", err)
 	}
 
@@ -51,7 +50,7 @@ func TestLogout_RevokesAndDeletes(t *testing.T) {
 func TestLogout_NotLoggedIn(t *testing.T) {
 	keyring.MockInit()
 	var out bytes.Buffer
-	if err := Logout(context.Background(), "https://api.nowsecure.com", DefaultStore(), &out); err != nil {
+	if err := Logout(t.Context(), "https://api.nowsecure.com", DefaultStore(), &out); err != nil {
 		t.Fatalf("Logout: %v", err)
 	}
 	if !strings.Contains(out.String(), "Not logged in") {
@@ -73,7 +72,7 @@ func TestLogout_RevokeFailureStillDeletesLocally(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := Logout(context.Background(), ts.URL, store, &out); err != nil {
+	if err := Logout(t.Context(), ts.URL, store, &out); err != nil {
 		t.Fatalf("Logout: %v", err)
 	}
 	if !strings.Contains(out.String(), "Warning") {

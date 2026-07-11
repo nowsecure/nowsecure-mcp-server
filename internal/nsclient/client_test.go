@@ -5,7 +5,6 @@ package nsclient
 // translation, shared UUID/negativity validation guards, and uuidVersion.
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -24,7 +23,7 @@ func TestSetOrderBy_SnakeAliasTranslated(t *testing.T) {
 		gotOrderBy = r.URL.Query().Get("orderBy")
 		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
 	})
-	if _, err := c.ListApps(context.Background(), ListAppsParams{OrderBy: "-vulnerability_count"}); err != nil {
+	if _, err := c.ListApps(t.Context(), ListAppsParams{OrderBy: "-vulnerability_count"}); err != nil {
 		t.Fatal(err)
 	}
 	if gotOrderBy != "-vulnerabilityCount" {
@@ -66,7 +65,7 @@ func TestGetJSON_Retry(t *testing.T) {
 					_, _ = w.Write([]byte(`{"error":"x"}`))
 				}
 			})
-			_, err := c.ListMARIApps(context.Background(), ListMARIAppsParams{})
+			_, err := c.ListMARIApps(t.Context(), ListMARIAppsParams{})
 			if tc.wantErr && err == nil {
 				t.Fatal("expected error")
 			}
@@ -87,7 +86,7 @@ func TestGetJSON_DecodeErrorIncludesSnippet(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`<html>oops</html>`))
 	})
-	_, err := c.ListMARIApps(context.Background(), ListMARIAppsParams{})
+	_, err := c.ListMARIApps(t.Context(), ListMARIAppsParams{})
 	if err == nil {
 		t.Fatal("expected a decode error")
 	}
@@ -169,7 +168,7 @@ func TestPageSizeFromCursor(t *testing.T) {
 // enforces them; all cases must fail before any HTTP call.
 func TestValidation_UUIDAndNegatives(t *testing.T) {
 	c := New("http://unused", "tok")
-	ctx := context.Background()
+	ctx := t.Context()
 	cases := []struct {
 		name string
 		call func() error

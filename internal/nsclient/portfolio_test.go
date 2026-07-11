@@ -6,7 +6,6 @@ package nsclient
 // AppsAffectedByFinding (summary mapping, epoch conversion, total:0).
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -42,7 +41,7 @@ func TestListApps_FiltersAndMapping(t *testing.T) {
 		}`))
 	})
 	score := 80.0
-	got, err := c.ListApps(context.Background(), ListAppsParams{ThresholdScore: &score, ThresholdSeverity: "high", OrderBy: "-score"})
+	got, err := c.ListApps(t.Context(), ListAppsParams{ThresholdScore: &score, ThresholdSeverity: "high", OrderBy: "-score"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +60,7 @@ func TestListApps_ScorePointer(t *testing.T) {
 			{"ref":"app-b","platform":"ios","package":"com.b","title":"Assessed","score":42.5}
 		],"pageInfo":{"hasNextPage":false}}`))
 	})
-	got, err := c.ListApps(context.Background(), ListAppsParams{})
+	got, err := c.ListApps(t.Context(), ListAppsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +96,7 @@ func TestListApps_IncludeSummaryEnvelope(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))
 	})
-	got, err := c.ListApps(context.Background(), ListAppsParams{IncludeSummary: true})
+	got, err := c.ListApps(t.Context(), ListAppsParams{IncludeSummary: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +110,7 @@ func TestListApps_IncludeSummaryEnvelope(t *testing.T) {
 	c = newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))
 	})
-	got, err = c.ListApps(context.Background(), ListAppsParams{})
+	got, err = c.ListApps(t.Context(), ListAppsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,14 +129,14 @@ func TestListApps_CursorPageSizeReused(t *testing.T) {
 		gotPageSize = r.URL.Query().Get("pageSize")
 		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
 	})
-	if _, err := c.ListApps(context.Background(), ListAppsParams{Cursor: cursor}); err != nil {
+	if _, err := c.ListApps(t.Context(), ListAppsParams{Cursor: cursor}); err != nil {
 		t.Fatal(err)
 	}
 	if gotPageSize != "50" {
 		t.Errorf("pageSize sent = %q, want 50 (recovered from the cursor)", gotPageSize)
 	}
 	// An explicit page_size still wins over the cursor's claimed limit.
-	if _, err := c.ListApps(context.Background(), ListAppsParams{Cursor: cursor, PageSize: 10}); err != nil {
+	if _, err := c.ListApps(t.Context(), ListAppsParams{Cursor: cursor, PageSize: 10}); err != nil {
 		t.Fatal(err)
 	}
 	if gotPageSize != "10" {
@@ -149,7 +148,7 @@ func TestListApps_ThresholdSeverityValidatedClientSide(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("request must not reach upstream")
 	})
-	_, err := c.ListApps(context.Background(), ListAppsParams{ThresholdSeverity: "sev1"})
+	_, err := c.ListApps(t.Context(), ListAppsParams{ThresholdSeverity: "sev1"})
 	if err == nil || !strings.Contains(err.Error(), `invalid threshold_severity "sev1" (allowed: critical, high, medium, low)`) {
 		t.Errorf("got %v, want client-side allowed-values error", err)
 	}
@@ -177,7 +176,7 @@ func TestListApps_SearchScansAllPages(t *testing.T) {
 		}
 	})
 	// page_size does not bound the number of matches while searching.
-	got, err := c.ListApps(context.Background(), ListAppsParams{Search: "cam", PageSize: 1})
+	got, err := c.ListApps(t.Context(), ListAppsParams{Search: "cam", PageSize: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +197,7 @@ func TestListApps_SearchWindowCutoff(t *testing.T) {
 		n := pages.Add(1)
 		fmt.Fprintf(w, `{"rows":[],"pageInfo":{"hasNextPage":true,"cursor":"cur-%d"}}`, n)
 	})
-	got, err := c.ListApps(context.Background(), ListAppsParams{Search: "zzz"})
+	got, err := c.ListApps(t.Context(), ListAppsParams{Search: "zzz"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,11 +213,11 @@ func TestGetAppByRef_V4RefHint(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
 	})
-	_, err := c.GetAppByRef(context.Background(), testUUIDv4)
+	_, err := c.GetAppByRef(t.Context(), testUUIDv4)
 	if err == nil || !strings.Contains(err.Error(), "v4 UUID") || !strings.Contains(err.Error(), "get_mari_assessment") {
 		t.Errorf("err = %v, want the v4 cross-namespace hint", err)
 	}
-	_, err = c.GetAppByRef(context.Background(), testUUIDv1)
+	_, err = c.GetAppByRef(t.Context(), testUUIDv1)
 	if err == nil || strings.Contains(err.Error(), "v4 UUID") {
 		t.Errorf("err = %v, want a plain not-found for a v1 ref", err)
 	}
@@ -240,7 +239,7 @@ func TestGetFinding_CacheAndEscaping(t *testing.T) {
 		_, _ = w.Write([]byte(`{"key":"weird/key","title":"W"}`))
 	})
 	for i := 0; i < 2; i++ {
-		got, err := c.GetFinding(context.Background(), "weird/key")
+		got, err := c.GetFinding(t.Context(), "weird/key")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -267,7 +266,7 @@ func TestGetFinding_TestingMethodDedupFlag(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"key":"k","title":"T","stepsToReproduce":"do X","testingMethod":"do X"}`))
 	})
-	got, err := dup.GetFinding(context.Background(), "k")
+	got, err := dup.GetFinding(t.Context(), "k")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +284,7 @@ func TestGetFinding_TestingMethodDedupFlag(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"key":"k2","title":"T2"}`))
 	})
-	got2, err := none.GetFinding(context.Background(), "k2")
+	got2, err := none.GetFinding(t.Context(), "k2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +314,7 @@ func findingCatalogServer(t *testing.T) *Client {
 
 func TestGetFinding_404SuggestsCatalogMatches(t *testing.T) {
 	c := findingCatalogServer(t)
-	_, err := c.GetFinding(context.Background(), "janus")
+	_, err := c.GetFinding(t.Context(), "janus")
 	if err == nil {
 		t.Fatal("expected a not-found error")
 	}
@@ -333,7 +332,7 @@ func TestGetFinding_404SuggestsCatalogMatches(t *testing.T) {
 
 func TestGetFinding_404SuggestSpacesToUnderscores(t *testing.T) {
 	c := findingCatalogServer(t)
-	_, err := c.GetFinding(context.Background(), "android janus")
+	_, err := c.GetFinding(t.Context(), "android janus")
 	if err == nil {
 		t.Fatal("expected a not-found error")
 	}
@@ -344,7 +343,7 @@ func TestGetFinding_404SuggestSpacesToUnderscores(t *testing.T) {
 
 func TestGetFinding_404NoMatchAppendsKeyOriginHint(t *testing.T) {
 	c := findingCatalogServer(t)
-	_, err := c.GetFinding(context.Background(), "zzznope")
+	_, err := c.GetFinding(t.Context(), "zzznope")
 	if err == nil {
 		t.Fatal("expected a not-found error")
 	}
@@ -364,7 +363,7 @@ func TestGetFinding_404CatalogUnavailableDegrades(t *testing.T) {
 	// Every request 404s (catalog included); the plain 404 with its
 	// cross-namespace hint must survive.
 	err := errFromUpstream(t, http.StatusNotFound, `{"message":"Not Found"}`, func(c *Client) error {
-		_, e := c.GetFinding(context.Background(), testUUIDv4)
+		_, e := c.GetFinding(t.Context(), testUUIDv4)
 		return e
 	})
 	msg := err.Error()
@@ -400,7 +399,7 @@ func TestAppsAffectedByFinding_SummaryFiltersMapping(t *testing.T) {
 			"summaryInfo":{"totalResults":123}
 		}`))
 	})
-	got, err := c.AppsAffectedByFinding(context.Background(), "finding-1", AffectedByParams{GroupRefs: []string{testUUIDv1, testUUIDv4}})
+	got, err := c.AppsAffectedByFinding(t.Context(), "finding-1", AffectedByParams{GroupRefs: []string{testUUIDv1, testUUIDv4}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +418,7 @@ func TestAppsAffectedByFinding_NoSummaryTotalZero(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
 	})
-	got, err := c.AppsAffectedByFinding(context.Background(), "finding-1", AffectedByParams{})
+	got, err := c.AppsAffectedByFinding(t.Context(), "finding-1", AffectedByParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +435,7 @@ func TestAppsAffectedByFinding_EpochMillisAndTotalZero(t *testing.T) {
 			"summaryInfo":{"totalResults":1}
 		}`))
 	})
-	got, err := c.AppsAffectedByFinding(context.Background(), "f", AffectedByParams{})
+	got, err := c.AppsAffectedByFinding(t.Context(), "f", AffectedByParams{})
 	if err != nil {
 		t.Fatal(err)
 	}

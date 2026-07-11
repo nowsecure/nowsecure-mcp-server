@@ -6,7 +6,6 @@ package nsclient
 // cross-namespace UUID-version hints.
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -27,7 +26,7 @@ func TestAPIError_HelpfulMessage(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"error":"no license"}`))
 	})
-	_, err := c.ListMARIApps(context.Background(), ListMARIAppsParams{})
+	_, err := c.ListMARIApps(t.Context(), ListMARIAppsParams{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -65,7 +64,7 @@ func TestAPIError_401AppScopeDenialDoesNotBlameToken(t *testing.T) {
 	err := errFromUpstream(t, http.StatusUnauthorized,
 		`{"message":"Unauthorized access to application"}`,
 		func(c *Client) error {
-			_, e := c.ListAssessments(context.Background(), ListAssessmentsParams{AppstoreKey: "1234"})
+			_, e := c.ListAssessments(t.Context(), ListAssessmentsParams{AppstoreKey: "1234"})
 			return e
 		})
 	msg := err.Error()
@@ -132,7 +131,7 @@ func TestInvalidCursor500BecomesClientError(t *testing.T) {
 	err := errFromUpstream(t, http.StatusInternalServerError,
 		`{"message":"Invalid cursor"}`,
 		func(c *Client) error {
-			_, e := c.ListApps(context.Background(), ListAppsParams{Cursor: "stale"})
+			_, e := c.ListApps(t.Context(), ListAppsParams{Cursor: "stale"})
 			return e
 		})
 	msg := err.Error()
@@ -167,7 +166,7 @@ func TestUnknownGroupEnumerationReplaced(t *testing.T) {
 		func(c *Client) error {
 			// A UUID-shaped but unknown group reaches upstream (a non-UUID would
 			// be caught client-side); the enumeration must still be replaced.
-			_, e := c.ListApps(context.Background(), ListAppsParams{GroupRefs: []string{testUUIDv1}})
+			_, e := c.ListApps(t.Context(), ListAppsParams{GroupRefs: []string{testUUIDv1}})
 			return e
 		})
 	msg := err.Error()
@@ -184,7 +183,7 @@ func TestUnknownGroupEnumerationReplaced(t *testing.T) {
 func TestAPIError_404MARIPathWithV1UUIDHintsPlatform(t *testing.T) {
 	err := errFromUpstream(t, http.StatusNotFound, `{"message":"Not Found"}`,
 		func(c *Client) error {
-			_, e := c.GetMARIAssessment(context.Background(), testUUIDv1, nil)
+			_, e := c.GetMARIAssessment(t.Context(), testUUIDv1, nil)
 			return e
 		})
 	if msg := err.Error(); !strings.Contains(msg, "this looks like a Platform ref") {
@@ -195,7 +194,7 @@ func TestAPIError_404MARIPathWithV1UUIDHintsPlatform(t *testing.T) {
 func TestAPIError_404PlatformPathWithV4UUIDHintsMARI(t *testing.T) {
 	err := errFromUpstream(t, http.StatusNotFound, `{"message":"Not Found"}`,
 		func(c *Client) error {
-			_, e := c.GetFinding(context.Background(), testUUIDv4)
+			_, e := c.GetFinding(t.Context(), testUUIDv4)
 			return e
 		})
 	if msg := err.Error(); !strings.Contains(msg, "this looks like a MARI ref") {
@@ -206,7 +205,7 @@ func TestAPIError_404PlatformPathWithV4UUIDHintsMARI(t *testing.T) {
 func TestAPIError_404MatchingNamespaceNoHint(t *testing.T) {
 	err := errFromUpstream(t, http.StatusNotFound, `{"message":"Not Found"}`,
 		func(c *Client) error {
-			_, e := c.GetMARIAssessment(context.Background(), testUUIDv4, nil)
+			_, e := c.GetMARIAssessment(t.Context(), testUUIDv4, nil)
 			return e
 		})
 	msg := err.Error()
@@ -221,7 +220,7 @@ func TestAPIError_404MatchingNamespaceNoHint(t *testing.T) {
 func TestAPIError_404NonUUIDPathNoHint(t *testing.T) {
 	err := errFromUpstream(t, http.StatusNotFound, `{"message":"Not Found"}`,
 		func(c *Client) error {
-			_, e := c.GetFinding(context.Background(), "apk_janus")
+			_, e := c.GetFinding(t.Context(), "apk_janus")
 			return e
 		})
 	if msg := err.Error(); strings.Contains(msg, "looks like") {
@@ -265,7 +264,7 @@ func TestAPIError_400ValidationRewritesParamNames(t *testing.T) {
 		{"instancePath":"/filters/2","message":"must be a valid uuid"}
 	]}`
 	err := errFromUpstream(t, http.StatusBadRequest, body, func(c *Client) error {
-		_, e := c.AppsAffectedByFinding(context.Background(), "finding-1", AffectedByParams{})
+		_, e := c.AppsAffectedByFinding(t.Context(), "finding-1", AffectedByParams{})
 		return e
 	})
 	msg := err.Error()

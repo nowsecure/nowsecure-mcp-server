@@ -6,7 +6,6 @@ package nsclient
 // aiUsage trim, findings pass-through, decode errors).
 
 import (
-	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -36,7 +35,7 @@ func TestListMARIApps_OffsetPaginationAndMapping(t *testing.T) {
 			"pageInfo":{"totalResults":57,"start":10,"end":20}
 		}`))
 	})
-	got, err := c.ListMARIApps(context.Background(), ListMARIAppsParams{PageNumber: 2, PageSize: 10, RiskCategory: []string{"HIGH"}})
+	got, err := c.ListMARIApps(t.Context(), ListMARIAppsParams{PageNumber: 2, PageSize: 10, RiskCategory: []string{"HIGH"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +54,7 @@ func TestListMARIApps_DecodesCreatedAt(t *testing.T) {
 			"pageInfo":{"totalResults":1,"start":0,"end":1}
 		}`))
 	})
-	got, err := c.ListMARIApps(context.Background(), ListMARIAppsParams{})
+	got, err := c.ListMARIApps(t.Context(), ListMARIAppsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +81,7 @@ func TestListMARIApps_EnumsValidatedClientSide(t *testing.T) {
 		{ListMARIAppsParams{Platform: "windows"}, `invalid platform "windows" (allowed: android, ios)`},
 		{ListMARIAppsParams{RiskCategory: []string{"SEVERE"}}, `invalid risk_category "SEVERE" (allowed: LOW, MEDIUM, HIGH)`},
 	} {
-		_, err := c.ListMARIApps(context.Background(), tc.params)
+		_, err := c.ListMARIApps(t.Context(), tc.params)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("params %+v: got %v, want %q", tc.params, err, tc.want)
 		}
@@ -95,7 +94,7 @@ func TestListMARIApps_EnumsCanonicalized(t *testing.T) {
 		gotFilters = r.URL.Query().Get("filters")
 		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"totalResults":0,"start":0,"end":0}}`))
 	})
-	_, err := c.ListMARIApps(context.Background(), ListMARIAppsParams{Platform: "ANDROID", Rating: []string{"a"}, RiskCategory: []string{"low"}})
+	_, err := c.ListMARIApps(t.Context(), ListMARIAppsParams{Platform: "ANDROID", Rating: []string{"a"}, RiskCategory: []string{"low"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +119,7 @@ func TestGetMARIAssessment_ExpandCaptured(t *testing.T) {
 			"permissions":{"summary":{"totalPermissions":9}}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(context.Background(), "ri-1", []string{"permissions"})
+	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"permissions"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +133,7 @@ func TestGetMARIAssessment_ExpandCaptured(t *testing.T) {
 
 func TestGetMARIAssessment_BadExpand(t *testing.T) {
 	c := New("http://unused", "tok")
-	if _, err := c.GetMARIAssessment(context.Background(), "ri-1", []string{"nope"}); err == nil {
+	if _, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"nope"}); err == nil {
 		t.Error("expected error for unsupported expand value")
 	}
 }
@@ -151,7 +150,7 @@ func TestGetMARIAssessment_FindingsPassThrough(t *testing.T) {
 			]
 		}`))
 	})
-	got, err := c.GetMARIAssessment(context.Background(), "ri-1", nil)
+	got, err := c.GetMARIAssessment(t.Context(), "ri-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +168,7 @@ func TestGetMARIAssessment_CoreDecodeError(t *testing.T) {
 		// swallowed into a zeroed (== "no risk") profile.
 		_, _ = w.Write([]byte(`{"riskScore":"not-a-number"}`))
 	})
-	_, err := c.GetMARIAssessment(context.Background(), "ri-1", nil)
+	_, err := c.GetMARIAssessment(t.Context(), "ri-1", nil)
 	if err == nil || !strings.Contains(err.Error(), "decoding response") {
 		t.Fatalf("error = %v, want 'decoding response'", err)
 	}
@@ -188,7 +187,7 @@ func TestGetMARIAssessment_ExpandedIsDecodedMap(t *testing.T) {
 			"permissions":{"summary":{"totalPermissions":9}}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(context.Background(), "ri-1", []string{"permissions"})
+	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"permissions"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +220,7 @@ func TestGetMARIAssessment_IdentityFromAppInfo(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(body))
 	})
-	got, err := c.GetMARIAssessment(context.Background(), "ri-1", nil)
+	got, err := c.GetMARIAssessment(t.Context(), "ri-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +235,7 @@ func TestGetMARIAssessment_IdentityFromAppInfo(t *testing.T) {
 	c = newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))
 	})
-	got, err = c.GetMARIAssessment(context.Background(), "ri-1", []string{"appInfo"})
+	got, err = c.GetMARIAssessment(t.Context(), "ri-1", []string{"appInfo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +271,7 @@ func TestGetMARIAssessment_LibrariesAndSdksShaped(t *testing.T) {
 			}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(context.Background(), "ri-1", []string{"librariesAndSdks"})
+	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"librariesAndSdks"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +312,7 @@ func TestGetMARIAssessment_AIUsageTrimmed(t *testing.T) {
 			}
 		}`))
 	})
-	got, err := c.GetMARIAssessment(context.Background(), "ri-1", []string{"aiUsage"})
+	got, err := c.GetMARIAssessment(t.Context(), "ri-1", []string{"aiUsage"})
 	if err != nil {
 		t.Fatal(err)
 	}

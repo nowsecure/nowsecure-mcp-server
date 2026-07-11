@@ -2,7 +2,6 @@ package nsauth
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -82,7 +81,7 @@ func TestLogin_EndToEnd(t *testing.T) {
 
 	var openedURL string
 	var out bytes.Buffer
-	creds, err := Login(context.Background(), Options{
+	creds, err := Login(t.Context(), Options{
 		Issuer:         ts.URL,
 		ClientID:       "native-client-id",
 		Audience:       "https://app.nowsecure.com",
@@ -124,14 +123,14 @@ func TestLogin_EndToEnd(t *testing.T) {
 }
 
 func TestLogin_RequiresClientID(t *testing.T) {
-	_, err := Login(context.Background(), Options{Out: io.Discard, OpenBrowser: noopBrowser})
+	_, err := Login(t.Context(), Options{Out: io.Discard, OpenBrowser: noopBrowser})
 	if err == nil || !strings.Contains(err.Error(), "ClientID") {
 		t.Fatalf("err = %v, want ClientID required", err)
 	}
 }
 
 func TestLogin_RejectsBadExpiration(t *testing.T) {
-	_, err := Login(context.Background(), Options{ClientID: "x", ExpirationDays: 999, Out: io.Discard, OpenBrowser: noopBrowser})
+	_, err := Login(t.Context(), Options{ClientID: "x", ExpirationDays: 999, Out: io.Discard, OpenBrowser: noopBrowser})
 	if err == nil || !strings.Contains(err.Error(), "ExpirationDays") {
 		t.Fatalf("err = %v, want ExpirationDays validation", err)
 	}
@@ -184,7 +183,7 @@ func TestLogin_RejectsInsecureIssuer(t *testing.T) {
 		"ftp://id.nowsecure.com",
 		"https://user:pass@id.nowsecure.com",
 	} {
-		_, err := Login(context.Background(), Options{ClientID: "c", Issuer: issuer})
+		_, err := Login(t.Context(), Options{ClientID: "c", Issuer: issuer})
 		if err == nil {
 			t.Errorf("Login with issuer %q: want an error, got nil", issuer)
 		}

@@ -1,7 +1,6 @@
 package mcpserver_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +35,7 @@ func backendURL(t *testing.T, h http.HandlerFunc) string {
 // the point: several past bugs lived in the SDK schema/validation layer.
 func session(t *testing.T, cfg *config.Config) *mcp.ClientSession {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	server := mcpserver.New(cfg, "test")
 
 	serverT, clientT := mcp.NewInMemoryTransports()
@@ -55,7 +54,7 @@ func session(t *testing.T, cfg *config.Config) *mcp.ClientSession {
 // toolNames returns the sorted set of tool names the session exposes.
 func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 	t.Helper()
-	res, err := cs.ListTools(context.Background(), nil)
+	res, err := cs.ListTools(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -174,7 +173,7 @@ func TestToolAnnotations(t *testing.T) {
 		EnableMARI:     true,
 	}
 	cs := session(t, cfg)
-	res, err := cs.ListTools(context.Background(), nil)
+	res, err := cs.ListTools(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -251,7 +250,7 @@ func TestGetMARIAssessment_ExpandStructuredOutput(t *testing.T) {
 	}
 	cs := session(t, cfg)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "get_mari_assessment",
 		Arguments: map[string]any{"assessment_ref": "ri-1", "expand": []string{"permissions"}},
 	})
@@ -292,7 +291,7 @@ func TestGetMARIAssessment_FindingsPassThrough(t *testing.T) {
 		}),
 	}
 	cs := session(t, cfg)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	firstDescription := func(res *mcp.CallToolResult) string {
 		m := structured(t, res)
@@ -364,7 +363,7 @@ func TestListMARIApps_PageNumberRejectsBelowOne(t *testing.T) {
 	cs := session(t, cfg)
 
 	for _, pn := range []int{0, -1} {
-		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 			Name:      "list_mari_apps",
 			Arguments: map[string]any{"page_number": pn},
 		})
@@ -395,7 +394,7 @@ func TestListMARIApps_PageNumberPassThrough(t *testing.T) {
 	}
 	cs := session(t, cfg)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "list_mari_apps",
 		Arguments: map[string]any{"page_number": 2},
 	})
@@ -422,7 +421,7 @@ func TestListAssessments_MissingFilterIsToolError(t *testing.T) {
 		}),
 	}
 	cs := session(t, cfg)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "list_assessments",
@@ -476,7 +475,7 @@ func TestGetAssessmentFindings_AffectedOnlyAndStatus(t *testing.T) {
 	}
 	cs := session(t, cfg)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "get_assessment_findings",
 		Arguments: map[string]any{"app_ref": "app-1"},
 	})
@@ -536,7 +535,7 @@ func TestListApps_TableDefault(t *testing.T) {
 	}
 	cs := session(t, cfg)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "list_apps",
 		Arguments: map[string]any{},
 	})
@@ -595,7 +594,7 @@ func TestListApps_FormatJSON(t *testing.T) {
 	}
 	cs := session(t, cfg)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "list_apps",
 		Arguments: map[string]any{"format": "json"},
 	})
@@ -626,7 +625,7 @@ func TestFormatParam_Invalid(t *testing.T) {
 	}
 	cs := session(t, cfg)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "list_apps",
 		Arguments: map[string]any{"format": "yaml"},
 	})
@@ -666,7 +665,7 @@ func TestGetAssessmentFindings_ProseForcesJSON(t *testing.T) {
 	cs := session(t, cfg)
 
 	// Default format=table, but include_recommendations forces JSON.
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "get_assessment_findings",
 		Arguments: map[string]any{"app_ref": "app-1", "include_recommendations": true},
 	})
@@ -706,7 +705,7 @@ func TestGetAssessmentFindings_TableDefault(t *testing.T) {
 	}
 	cs := session(t, cfg)
 
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "get_assessment_findings",
 		Arguments: map[string]any{"app_ref": "app-1"},
 	})
