@@ -31,7 +31,7 @@ func TestAPIError_HelpfulMessage(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	var apiErr *APIError
-	if !asAPIError(err, &apiErr) || apiErr.StatusCode != 403 {
+	if !asAPIError(err, &apiErr) || apiErr.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403 APIError, got %v", err)
 	}
 }

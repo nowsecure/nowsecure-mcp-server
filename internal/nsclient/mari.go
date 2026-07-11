@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -257,13 +258,7 @@ func (c *Client) GetMARIAssessment(ctx context.Context, assessmentRef string, ex
 	// default response omits, so it is always fetched; it surfaces in Expanded
 	// only when the caller asked for it.
 	upstream := norm
-	hasAppInfo := false
-	for _, e := range norm {
-		if e == "appInfo" {
-			hasAppInfo = true
-			break
-		}
-	}
+	hasAppInfo := slices.Contains(norm, "appInfo")
 	if !hasAppInfo {
 		upstream = append(append([]string{}, norm...), "appInfo")
 	}

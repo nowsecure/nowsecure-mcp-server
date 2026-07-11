@@ -131,7 +131,7 @@ func TestResolve_ValidateBaseURL(t *testing.T) {
 		{name: "http public rejected", url: "http://api.example.com", wantErr: true, substr: "cleartext"},
 		{name: "http localhost ok", url: "http://localhost:8080", wantErr: false},
 		{name: "http loopback ip ok", url: "http://127.0.0.1:9999", wantErr: false},
-		{name: "credentials rejected", url: "https://user:pass@api.example.com", wantErr: true, substr: "credentials"},
+		{name: "credentials rejected", url: "https://user:pass@api.example.com", wantErr: true, substr: "credentials"}, //nolint:gosec // test fixture: this is the credentials-in-URL case under test, not a real secret
 		{name: "garbage rejected", url: "not a url", wantErr: true},
 		{name: "scheme-less rejected", url: "api.example.com", wantErr: true},
 		{name: "ftp rejected", url: "ftp://x", wantErr: true},

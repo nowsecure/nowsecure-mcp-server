@@ -98,7 +98,7 @@ func tokenInfoFromContext(ctx context.Context) *auth.TokenInfo {
 	return ti
 }
 
-// Serve runs the MCP server over stdio until ctx is cancelled or stdin closes.
+// Serve runs the MCP server over stdio until ctx is canceled or stdin closes.
 func Serve(ctx context.Context, server *mcp.Server) error {
 	return server.Run(ctx, &mcp.StdioTransport{})
 }

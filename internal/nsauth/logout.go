@@ -46,7 +46,7 @@ func Logout(ctx context.Context, baseURL string, store Store, out io.Writer) err
 // client since revocation is a one-shot best-effort call against a real host.
 func revokeToken(ctx context.Context, baseURL, ref, token string) error {
 	u := strings.TrimRight(baseURL, "/") + "/user/token/" + url.PathEscape(ref)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, http.NoBody)
 	if err != nil {
 		return err
 	}

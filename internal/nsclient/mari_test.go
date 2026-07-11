@@ -7,18 +7,14 @@ package nsclient
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 )
 
 // expandContains reports whether the comma-joined expand query holds want.
 func expandContains(query, want string) bool {
-	for _, e := range strings.Split(query, ",") {
-		if e == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(strings.Split(query, ","), want)
 }
 
 func TestListMARIApps_OffsetPaginationAndMapping(t *testing.T) {

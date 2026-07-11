@@ -101,7 +101,7 @@ type listAssessmentsInput struct {
 	AppstoreKey string   `json:"appstore_key,omitempty" jsonschema:"app store application key to scope to (alternative to app_ref)"`
 	GroupRefs   []string `json:"group_refs,omitempty" jsonschema:"limit to these group UUIDs"`
 	Platforms   []string `json:"platforms,omitempty" jsonschema:"filter by platform types: android, ios"`
-	Status      []string `json:"status,omitempty" jsonschema:"filter by status: completed, failed, processing, pending, cancelled, partial, incomplete"`
+	Status      []string `json:"status,omitempty" jsonschema:"filter by status: completed, failed, processing, pending, cancelled, partial, incomplete"` //nolint:misspell // "cancelled" is the upstream API's actual wire value
 	Rating      []string `json:"rating,omitempty" jsonschema:"filter by rating: critical, poor, fair, good, excellent"`
 	Type        []string `json:"type,omitempty" jsonschema:"filter by assessment type: advanced, baseline, guided, pen_test, workstation"`
 	Since       string   `json:"since,omitempty" jsonschema:"only assessments created on/after this date (YYYY-MM-DD or RFC3339)"`

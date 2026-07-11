@@ -137,7 +137,7 @@ func (e *APIError) hint() string {
 // version matches its namespace.
 func crossNamespaceHint(path string) string {
 	mari := strings.Contains(path, "/risk-intelligence/")
-	for _, seg := range strings.Split(path, "/") {
+	for seg := range strings.SplitSeq(path, "/") {
 		v, ok := uuidVersion(seg)
 		if !ok {
 			continue
@@ -194,7 +194,7 @@ func (c *Client) getJSON(ctx context.Context, op, path string, query url.Values,
 		u += "?" + query.Encode()
 	}
 	for attempt := 0; ; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
 		if err != nil {
 			return err
 		}
@@ -405,7 +405,7 @@ func snakeToLowerCamel(s string) string {
 		return s
 	}
 	var b strings.Builder
-	for _, p := range strings.Split(s, "_") {
+	for p := range strings.SplitSeq(s, "_") {
 		if p == "" {
 			continue
 		}

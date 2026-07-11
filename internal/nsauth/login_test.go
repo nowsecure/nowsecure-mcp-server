@@ -42,7 +42,7 @@ func (d *deviceServer) handler(t *testing.T) http.HandlerFunc {
 				"interval":                  1,
 			})
 		case "/oauth/token":
-			writeJSON(w, map[string]any{
+			writeJSON(w, map[string]any{ //nolint:gosec // test fixture token value, not a real credential
 				"access_token": "auth0-access-token",
 				"token_type":   "Bearer",
 				"expires_in":   86400,
@@ -81,7 +81,7 @@ func TestLogin_EndToEnd(t *testing.T) {
 
 	var openedURL string
 	var out bytes.Buffer
-	creds, err := Login(t.Context(), Options{
+	creds, err := Login(t.Context(), Options{ //nolint:gosec // test fixture client id/token name, not a real credential
 		Issuer:         ts.URL,
 		ClientID:       "native-client-id",
 		Audience:       "https://app.nowsecure.com",

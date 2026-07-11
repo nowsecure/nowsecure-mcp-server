@@ -77,7 +77,7 @@ func Verify(ctx context.Context, baseURL, token string, client *http.Client) err
 		client = http.DefaultClient
 	}
 	u := strings.TrimRight(baseURL, "/") + "/user/token/"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
 	if err != nil {
 		return err
 	}

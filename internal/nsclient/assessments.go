@@ -27,7 +27,7 @@ func normalizeTimestamp(s string) string {
 // or an anyOf filter-schema dump depending on the endpoint.
 var (
 	enumPlatforms         = []string{"android", "ios"}
-	enumStatus            = []string{"completed", "failed", "processing", "pending", "cancelled", "partial", "incomplete"}
+	enumStatus            = []string{"completed", "failed", "processing", "pending", "cancelled", "partial", "incomplete"} //nolint:misspell // "cancelled" is the upstream API's actual wire value
 	enumRating            = []string{"critical", "poor", "fair", "good", "excellent"}
 	enumType              = []string{"advanced", "baseline", "guided", "pen_test", "workstation"}
 	enumThresholdSeverity = []string{"critical", "high", "medium", "low"}

@@ -8,7 +8,7 @@ import (
 
 // searchCatalogClient serves a small GraphQL check catalog and counts hits so
 // tests can assert the catalog is fetched once and cached.
-func searchCatalogClient(t *testing.T) (*Client, *int) {
+func searchCatalogClient(t *testing.T) (client *Client, hitCount *int) {
 	t.Helper()
 	hits := new(int)
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -75,13 +75,13 @@ func TestSearchFindings_IncludeDeprecatedRestoresCoveredBy(t *testing.T) {
 			warn = &got.Findings[i]
 		}
 	}
-	if warn == nil {
+	if warn == nil { //nolint:staticcheck // SA5011 false positive: t.Fatal below halts the test
 		t.Fatal("android_janus_warn missing from include_deprecated results")
 	}
-	if !warn.Deprecated {
+	if !warn.Deprecated { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
 		t.Error("deprecated = false on the deprecated row")
 	}
-	if len(warn.CoveredBy) != 1 || warn.CoveredBy[0].ID != "android_janus_vuln" {
+	if len(warn.CoveredBy) != 1 || warn.CoveredBy[0].ID != "android_janus_vuln" { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
 		t.Errorf("covered_by = %+v", warn.CoveredBy)
 	}
 }

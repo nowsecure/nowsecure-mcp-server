@@ -238,7 +238,7 @@ func TestGetFinding_CacheAndEscaping(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"key":"weird/key","title":"W"}`))
 	})
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		got, err := c.GetFinding(t.Context(), "weird/key")
 		if err != nil {
 			t.Fatal(err)

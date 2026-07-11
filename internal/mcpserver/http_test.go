@@ -204,9 +204,9 @@ func resultText(res *mcp.CallToolResult) string {
 
 // unauthedGet issues a GET carrying token (empty for none) and returns status
 // and the WWW-Authenticate header.
-func unauthedGet(t *testing.T, endpoint, token string) (int, string) {
+func unauthedGet(t *testing.T, endpoint, token string) (status int, wwwAuthenticate string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	req, err := http.NewRequest(http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}

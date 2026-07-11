@@ -170,7 +170,7 @@ func newProfileCmd(opts *rootOptions) *cobra.Command {
 }
 
 // newProfileClient resolves config (both tool groups on, matching the old
-// profile behaviour) and returns a REST client.
+// profile behavior) and returns a REST client.
 func newProfileClient(opts *rootOptions) (*nsclient.Client, error) {
 	cfg, err := config.Resolve(config.Inputs{
 		Token: opts.token, BaseURL: opts.baseURL,
@@ -193,7 +193,7 @@ func printJSON(cmd *cobra.Command, v any) error {
 // empty fields (so "a, ,b," -> ["a","b"]).
 func splitCSV(s string) []string {
 	var out []string
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		if p := strings.TrimSpace(part); p != "" {
 			out = append(out, p)
 		}

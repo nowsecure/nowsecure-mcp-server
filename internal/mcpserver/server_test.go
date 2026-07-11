@@ -207,13 +207,13 @@ func TestServerInstructions(t *testing.T) {
 	}
 	cs := session(t, cfg)
 	init := cs.InitializeResult()
-	if init == nil {
+	if init == nil { //nolint:staticcheck // SA5011 false positive: t.Fatal below halts the test
 		t.Fatal("InitializeResult is nil")
 	}
-	if strings.TrimSpace(init.Instructions) == "" {
+	if strings.TrimSpace(init.Instructions) == "" { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
 		t.Fatal("Instructions is empty")
 	}
-	if !strings.Contains(init.Instructions, "list_apps") {
+	if !strings.Contains(init.Instructions, "list_apps") { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
 		t.Errorf("Instructions does not mention list_apps: %q", init.Instructions)
 	}
 }
@@ -234,7 +234,7 @@ func TestGetMARIAssessment_ExpandStructuredOutput(t *testing.T) {
 			// carries it alongside whatever the caller requested.
 			expand := r.URL.Query().Get("expand")
 			set := make(map[string]bool)
-			for _, p := range strings.Split(expand, ",") {
+			for p := range strings.SplitSeq(expand, ",") {
 				set[p] = true
 			}
 			if !set["permissions"] || !set["appInfo"] {

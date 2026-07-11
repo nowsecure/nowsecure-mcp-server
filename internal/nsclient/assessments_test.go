@@ -379,14 +379,12 @@ func TestGetAssessmentFindings_ConcurrentNoRace(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 2 {
+		wg.Go(func() {
 			if _, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-2"}); err != nil {
 				t.Errorf("concurrent call: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -502,7 +500,7 @@ func TestGetAssessmentFindings_FindingsCached(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	})
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := c.GetAssessmentFindings(t.Context(), FindingsParams{AppRef: "app-1", AssessmentRef: "as-1"}); err != nil {
 			t.Fatalf("call %d: %v", i, err)
 		}

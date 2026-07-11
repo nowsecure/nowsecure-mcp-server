@@ -182,7 +182,7 @@ func (c *Client) searchApps(ctx context.Context, p ListAppsParams) (*AppPage, er
 	needle := strings.ToLower(strings.TrimSpace(p.Search))
 	out := &AppPage{Apps: []App{}}
 	cursor := p.Cursor
-	for i := 0; i < searchAppPages; i++ {
+	for range searchAppPages {
 		raw, err := c.listAppsRaw(ctx, p, searchAppPageSize, cursor, true)
 		if err != nil {
 			return nil, err
@@ -558,14 +558,8 @@ const snippetRadius = 60
 // into a lowercased copy of s; offsets agree for the ASCII prose this catalog
 // holds, and the rune-boundary clamps keep any exotic text merely cosmetic.
 func proseSnippet(s string, idx, matchLen int) string {
-	start := idx - snippetRadius
-	if start < 0 {
-		start = 0
-	}
-	end := idx + matchLen + snippetRadius
-	if end > len(s) {
-		end = len(s)
-	}
+	start := max(idx-snippetRadius, 0)
+	end := min(idx+matchLen+snippetRadius, len(s))
 	for start > 0 && !utf8.RuneStart(s[start]) {
 		start--
 	}

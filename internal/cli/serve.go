@@ -46,7 +46,7 @@ func newServeCmd(opts *rootOptions) *cobra.Command {
 }
 
 // runServe resolves config, builds the server, and serves over stdio until the
-// context is cancelled (SIGINT/SIGTERM) or stdin closes. The startup line goes
+// context is canceled (SIGINT/SIGTERM) or stdin closes. The startup line goes
 // to STDERR because stdout is the MCP stdio transport. With --http it defers
 // to the remote resource-server mode instead.
 func runServe(cmd *cobra.Command, opts *rootOptions, so *serveOptions) error {
@@ -75,7 +75,7 @@ func runServe(cmd *cobra.Command, opts *rootOptions, so *serveOptions) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := mcpserver.Serve(ctx, server); err != nil {
-		// A cancelled context is a clean shutdown on SIGINT/SIGTERM, not a
+		// A canceled context is a clean shutdown on SIGINT/SIGTERM, not a
 		// failure — exit 0.
 		if errors.Is(err, context.Canceled) {
 			return nil

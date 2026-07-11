@@ -50,7 +50,7 @@ type HTTPOptions struct {
 	OBOClientSecret string
 }
 
-// ServeHTTP runs the resource-server mode until ctx is cancelled. It performs
+// ServeHTTP runs the resource-server mode until ctx is canceled. It performs
 // OIDC discovery against the issuer, then serves the Streamable HTTP MCP
 // endpoint (bearer-protected) plus the RFC 9728 protected-resource metadata
 // endpoint, shutting down gracefully when ctx is done.
@@ -180,7 +180,7 @@ func bearerVerifier(provider *oidc.Provider, audience string) auth.TokenVerifier
 
 // accessTokenType is the RFC 8693 URN for OAuth 2.0 access tokens, used as both
 // the subject and requested token type in the on-behalf-of exchange.
-const accessTokenType = "urn:ietf:params:oauth:token-type:access_token"
+const accessTokenType = "urn:ietf:params:oauth:token-type:access_token" //nolint:gosec // RFC 8693 token-type URN, not a credential
 
 // oboSkew is subtracted from an exchanged token's cached lifetime so it is
 // refreshed before it (or the inbound token backing it) actually expires.
