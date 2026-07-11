@@ -3,7 +3,7 @@ VERSION ?= 0.1.0
 GOFLAGS := -mod=mod
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: build test vet fmt run clean
+.PHONY: build test vet fmt lint run clean
 
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/nsmcp
@@ -16,6 +16,9 @@ vet:
 
 fmt:
 	gofmt -w .
+
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
 
 run: build
 	./$(BINARY) serve

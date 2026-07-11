@@ -1,0 +1,100 @@
+version: "2"
+run:
+  timeout: 5m
+  tests: true
+linters:
+  enable:
+    - gocritic
+    - gosec
+    - misspell
+    - revive
+    - testifylint
+    - unconvert
+    - usestdlibvars
+    - usetesting
+    - whitespace
+    - modernize
+  settings:
+    gocritic:
+      enable-all: true
+      disabled-checks:
+        - appendAssign
+        - hugeParam
+        - rangeValCopy
+        - regexpSimplify
+    govet:
+      disable:
+        - shadow
+        - fieldalignment
+      enable-all: true
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+          arguments:
+            - allowTypesBefore: "*testing.T"
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        # - name: error-strings
+        - name: errorf
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+            - sayRepetitiveInsteadOfStutters
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unreachable-code
+        - name: var-declaration
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+    staticcheck:
+      checks:
+        - all
+        # Ignore "API" to "Api" naming convention suggestion
+        - "-ST1003"
+    testifylint:
+      enable-all: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: integration_test\.go
+        linters:
+          - gocritic
+        text: sprintfQuotedString
+      # exec.Command with a browser-open helper binary/args, not user input.
+      - path: internal/nsauth/login\.go
+        linters:
+          - gosec
+        text: G204
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule
+    gofumpt:
+      module-path: nsmcp
+      extra-rules: true
