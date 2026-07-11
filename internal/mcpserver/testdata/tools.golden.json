@@ -1,0 +1,1367 @@
+[
+  {
+    "name": "decode_nowsecure_url",
+    "description": "Parse a NowSecure console URL or deep link into the ids the other tools take, under their exact parameter names: platform, package, app_ref, assessment_ref (which also carries numeric task ids from URLs), mari_assessment_ref, group_refs, and finding. Pass mari_assessment_ref to get_mari_assessment as its assessment_ref. Pure/local: makes no API calls. Unparseable id-like segments are reported in a warnings array rather than dropped silently.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "description": "a NowSecure console URL or deep link to parse",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_ref": {
+          "type": "string"
+        },
+        "assessment_ref": {
+          "type": "string"
+        },
+        "finding": {
+          "type": "string"
+        },
+        "group_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "host": {
+          "type": "string"
+        },
+        "mari_assessment_ref": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_apps_affected_by_finding",
+    "description": "Fleet-wide impact: list portfolio apps whose latest assessment is affected by a given finding (key or id). Answers 'which of my apps are exposed to X?'. Cursor-paginated; filter by platform, group, or search text. Rows carry no score/rating (join app_ref to list_apps to prioritize); created_at is the latest assessment date (what order_by=created_at sorts by). A platform filter is orthogonal to the finding's own platform (e.g. an android-only finding with platform=ios) and legitimately returns an empty list with total:0. Default text block is a compact table (one row per app; '# ' comment lines carry finding/total and the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "pagination cursor from a previous page's next_cursor",
+          "type": "string"
+        },
+        "finding": {
+          "description": "finding key, e.g. android_janus_vuln",
+          "type": "string"
+        },
+        "format": {
+          "description": "text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON",
+          "type": "string"
+        },
+        "group_refs": {
+          "description": "limit to these group UUIDs",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "order_by": {
+          "description": "sort order: title, -title, package, -package, platform, -platform, created_at, -created_at",
+          "type": "string"
+        },
+        "page_size": {
+          "description": "max apps to return in this page (upstream cap 50)",
+          "type": "integer"
+        },
+        "platform": {
+          "description": "filter by platform: android or ios",
+          "type": "string"
+        },
+        "search": {
+          "description": "filter by app title/package search text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "finding"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_ref": {
+                "type": "string"
+              },
+              "assessment_ref": {
+                "type": "string"
+              },
+              "build_version": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "package": {
+                "type": "string"
+              },
+              "package_version": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_ref",
+              "title",
+              "platform",
+              "package"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "finding": {
+          "type": "string"
+        },
+        "page": {
+          "additionalProperties": false,
+          "properties": {
+            "has_next_page": {
+              "type": "boolean"
+            },
+            "next_cursor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "has_next_page"
+          ],
+          "type": "object"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "finding",
+        "apps",
+        "page",
+        "total"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_assessment_findings",
+    "description": "Get the findings for one assessment as a compact, triage-ready list (check_id, title, category, severity, affected, cvss), sorted most-severe first. Evidence, raw context, and recommendation prose are deliberately stripped to keep the response small — for remediation, call get_finding with a check_id, or re-query with check_ids=[...] for full recommendations on specific findings, or include_recommendations=true for truncated ones on every row. Takes app_ref (returned by list_apps/list_assessments); assessment_ref is optional — when omitted, the assessment the app's portfolio row points at is used (its latest known scan, which can lag a just-finished one) — check the returned status/created_at, and pass an explicit ref from a list_assessments row with findings_available=true to pin a scan. The response echoes the applied report profile. Defaults to affected findings only; use affected_only=false, min_severity, or limit to adjust the size. The default omits artifact-category inventory rows (counts still show them as counts.artifacts; include_artifacts=true restores them); min_severity=low returns exactly the scored vulnerabilities behind vulnerability_count. Default text block is a compact table (one row per finding; '# ' comment lines carry counts and the report/status/created_at envelope), forced to json when check_ids or include_recommendations pulls in recommendation prose; pass format:\"json\" to mirror the full JSON in the text block otherwise. structuredContent always carries the canonical JSON.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_only": {
+          "description": "only return findings the app is affected by (default true)",
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
+        "app_ref": {
+          "description": "application UUID (the app_ref from list_apps or list_assessments)",
+          "type": "string"
+        },
+        "assessment_ref": {
+          "description": "assessment UUID, or a numeric task id as extracted from a console URL by decode_nowsecure_url; omit to use the app's latest assessment",
+          "type": "string"
+        },
+        "check_ids": {
+          "description": "only return these findings (check_id values), each with its FULL untruncated developer recommendation — the on-demand deep-dive",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "format": {
+          "description": "text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON. Forced to json when check_ids or include_recommendations is set (multiline recommendation prose does not tabulate)",
+          "type": "string"
+        },
+        "include_artifacts": {
+          "description": "include category=artifact inventory rows (extracted files, IP addresses, ...) in the findings array; default false keeps only scored findings (counts.artifacts still reports them)",
+          "type": "boolean"
+        },
+        "include_recommendations": {
+          "description": "include a truncated developer recommendation on every row (default false; prefer get_finding or check_ids for full remediation)",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "max findings to return (most severe kept; counts still cover the full report)",
+          "type": "integer"
+        },
+        "min_severity": {
+          "description": "only return findings at this severity or higher: info, warn, low, medium, high, critical",
+          "type": "string"
+        },
+        "report": {
+          "description": "report profile: lab-auto (default), intel, or niap; profiles frequently share the same finding set — the response echoes the applied profile",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app_ref"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "assessment_ref": {
+          "type": "string"
+        },
+        "counts": {
+          "additionalProperties": false,
+          "properties": {
+            "artifacts": {
+              "type": "integer"
+            },
+            "critical": {
+              "type": "integer"
+            },
+            "high": {
+              "type": "integer"
+            },
+            "info": {
+              "type": "integer"
+            },
+            "low": {
+              "type": "integer"
+            },
+            "medium": {
+              "type": "integer"
+            },
+            "pass": {
+              "type": [
+                "null",
+                "integer"
+              ]
+            },
+            "warn": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "warn",
+            "info"
+          ],
+          "type": "object"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "affected": {
+                "type": "boolean"
+              },
+              "analysis_type": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "check_id": {
+                "type": "string"
+              },
+              "cvss": {
+                "type": "number"
+              },
+              "recommendation": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "check_id",
+              "title",
+              "severity",
+              "affected"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "report": {
+          "description": "the report profile these findings came from",
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "total_findings": {
+          "type": "integer"
+        },
+        "total_returned": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "assessment_ref",
+        "counts",
+        "total_returned",
+        "total_findings",
+        "findings"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_finding",
+    "description": "Get documentation for a single finding by key or id: title, category, severity/CVSS range, description, steps to reproduce, testing method, and markdown remediation guidance. Static reference data (no per-app evidence). Use include=[...] to fetch only specific prose sections (e.g. just remediation). Two taxonomies: category is the lab analysis category (lowercase; matches get_assessment_findings rows), categories are capability groups (Title Case). platform is omitted for findings that apply to both android and ios; application_count equals get_apps_affected_by_finding's total. Use after list_apps/get_assessment_findings to understand or remediate a specific finding.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "finding": {
+          "description": "finding key, e.g. android_janus_vuln",
+          "type": "string"
+        },
+        "include": {
+          "description": "prose sections to return: description, steps_to_reproduce, testing_method, remediation — omit for all; scalar metadata is always included",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "finding"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis_type": {
+          "type": "string"
+        },
+        "application_count": {
+          "description": "portfolio apps whose latest assessment is affected",
+          "type": "integer"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "category": {
+          "type": "string"
+        },
+        "covered_by": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "cvss_max": {
+          "type": "number"
+        },
+        "cvss_min": {
+          "type": "number"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "finding_type": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "remediation": {
+          "description": "markdown remediation guidance",
+          "type": "string"
+        },
+        "severity_max": {
+          "type": "string"
+        },
+        "severity_min": {
+          "type": "string"
+        },
+        "steps_to_reproduce": {
+          "type": "string"
+        },
+        "testing_method": {
+          "description": "omitted when identical to steps_to_reproduce",
+          "type": "string"
+        },
+        "testing_method_same_as_steps": {
+          "description": "true when upstream's testing_method duplicated steps_to_reproduce and was omitted",
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "application_count"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_mari_assessment",
+    "description": "Get the risk profile for one third-party app by its MARI assessment ref: title/package/platform identity (always populated), overall risk score/rating/category, NowSecure risk, findings summary, and a compact list of findings — upstream reports only the findings the app is affected by (the summary counts both affected and checked). risk_score is 0-100 where HIGHER is worse. Two score families: risk_* reflects any org-specific score override; nowsecure_risk_* is NowSecure's unmodified computed risk — identical unless your org overrode the score. Finding rows omit short_description prose by default — pull it back with check_ids=[...] for specific findings or include_descriptions=true for every row. Use expand to opt into heavier sections (permissions, trackingDomains, networkConnections, librariesAndSdks, aiUsage, iosMetadata, appInfo) for a deeper due-diligence report; expanded librariesAndSdks is shaped down to its summary plus CVE-bearing components only.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "assessment_ref": {
+          "description": "MARI assessment ref (from list_mari_apps assessment_ref)",
+          "type": "string"
+        },
+        "check_ids": {
+          "description": "only return these findings (check_id values), each with its full short_description — the on-demand deep-dive",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "expand": {
+          "description": "optional heavier sections to include: appInfo, aiUsage, iosMetadata, librariesAndSdks (shaped/compact: summary + CVE-bearing components only), networkConnections, permissions, trackingDomains",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "include_descriptions": {
+          "description": "include short_description on every finding row (default false; prefer check_ids for specific findings)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "assessment_ref"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "assessment_ref": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "expanded": {
+          "additionalProperties": true,
+          "description": "requested expand sections keyed by snake_case section name",
+          "type": "object"
+        },
+        "findings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "affected": {
+                "type": "boolean"
+              },
+              "categories": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "check_id": {
+                "type": "string"
+              },
+              "cvss_score": {
+                "type": "number"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "short_description": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "check_id",
+              "title",
+              "affected"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "nowsecure_risk_category": {
+          "type": "string"
+        },
+        "nowsecure_risk_recommendation": {
+          "type": "string"
+        },
+        "nowsecure_risk_score": {
+          "type": "number"
+        },
+        "package": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "risk_category": {
+          "type": "string"
+        },
+        "risk_rating": {
+          "type": "string"
+        },
+        "risk_recommendation": {
+          "type": "string"
+        },
+        "risk_score": {
+          "type": "number"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "total_findings_affected": {
+              "type": "integer"
+            },
+            "total_findings_checked": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total_findings_affected",
+            "total_findings_checked"
+          ],
+          "type": "object"
+        },
+        "title": {
+          "description": "app title (when reported by upstream)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assessment_ref",
+        "risk_score",
+        "nowsecure_risk_score",
+        "summary",
+        "findings"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "list_apps",
+    "description": "List mobile apps in your NowSecure portfolio with their latest security score, rating, and open vulnerability count. The primary starting point for DevSecOps triage. Returns a compact row per app (title, platform, package, score, rating, vulnerability_count, app_ref, assessment_ref, group, group_ref — rows are the group-discovery source for group_refs params). score is 0-100 where HIGHER is better (the opposite polarity of MARI risk scores); correlate an app with the MARI catalog by matching (package, platform). search is the front door for the MARI↔Platform (package, platform) join, and one package can match multiple portfolio apps (one per group) — all are returned. Apps that have never been scanned omit score and assessment_ref. Cursor-paginated: pass the returned next_cursor to fetch the next page. Use threshold_score/threshold_severity to focus on the riskiest apps. Default text block is a compact table (one row per app; '# ' comment lines carry the total match count, the page envelope, and — with include_summary — the portfolio summary); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_refs": {
+          "description": "limit to these app_ref UUIDs (from list_apps rows)",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "cursor": {
+          "description": "pagination cursor from a previous page's next_cursor",
+          "type": "string"
+        },
+        "format": {
+          "description": "text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON",
+          "type": "string"
+        },
+        "group_refs": {
+          "description": "limit to these group UUIDs",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "include_summary": {
+          "description": "include a portfolio-level score/rating summary",
+          "type": "boolean"
+        },
+        "order_by": {
+          "description": "sort order: score, -score, created_at, -created_at, vulnerability_count, or -vulnerability_count; score ascending = riskiest first (score is higher-is-better); -score lists the best apps first",
+          "type": "string"
+        },
+        "page_size": {
+          "description": "max apps to return in this page (upstream cap 50)",
+          "type": "integer"
+        },
+        "search": {
+          "description": "case-insensitive substring match on title or package, applied by nsmcp (the upstream API has no text filter); scans up to 20 upstream pages per call — repeat with next_cursor to continue",
+          "type": "string"
+        },
+        "threshold_score": {
+          "description": "only list apps with this NowSecure score (0-100) or lower",
+          "type": [
+            "null",
+            "number"
+          ]
+        },
+        "threshold_severity": {
+          "description": "only list apps with a finding at this severity or higher: critical, high, medium, or low (finding severity, not the app rating — many apps rate \"critical\" without any critical-severity finding)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_ref": {
+                "type": "string"
+              },
+              "assessment_ref": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "group_ref": {
+                "type": "string"
+              },
+              "package": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "rating": {
+                "type": "string"
+              },
+              "score": {
+                "type": [
+                  "null",
+                  "number"
+                ]
+              },
+              "title": {
+                "type": "string"
+              },
+              "vulnerability_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "app_ref",
+              "title",
+              "platform",
+              "package",
+              "vulnerability_count"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "page": {
+          "additionalProperties": false,
+          "properties": {
+            "has_next_page": {
+              "type": "boolean"
+            },
+            "next_cursor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "has_next_page"
+          ],
+          "type": "object"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "portfolio_rating": {
+              "type": "string"
+            },
+            "portfolio_score": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "portfolio_score"
+          ],
+          "type": [
+            "null",
+            "object"
+          ]
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "apps",
+        "total",
+        "page"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "list_assessments",
+    "description": "List the scan history of an app, newest first, with score, rating, status, and finding counts by severity. Requires app_ref, package, or appstore_key — the API rejects portfolio-wide queries, so to survey many apps call list_apps first and query per app. Note: package/appstore_key scoping merges the history of EVERY app sharing that id across groups; use app_ref for one app's history. Rows with track=store_monitor come from store monitoring, not lab analysis: their finding counts use a different upstream source than get_assessment_findings (which cannot serve them — check findings_available). Further filter by platform/status/rating/type/date. Cursor-paginated. Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_ref": {
+          "description": "application UUID (from list_apps app_ref). Provide this OR package OR appstore_key — at least one is required",
+          "type": "string"
+        },
+        "appstore_key": {
+          "description": "app store application key to scope to (alternative to app_ref)",
+          "type": "string"
+        },
+        "cursor": {
+          "description": "pagination cursor from a previous page's next_cursor",
+          "type": "string"
+        },
+        "format": {
+          "description": "text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON",
+          "type": "string"
+        },
+        "group_refs": {
+          "description": "limit to these group UUIDs",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "order_by": {
+          "description": "sort order: created_at, -created_at, build_version, package_version (default -created_at)",
+          "type": "string"
+        },
+        "package": {
+          "description": "android package or iOS bundle id to scope to (alternative to app_ref; merges all apps sharing the id)",
+          "type": "string"
+        },
+        "page_size": {
+          "description": "max assessments to return in this page",
+          "type": "integer"
+        },
+        "platforms": {
+          "description": "filter by platform types: android, ios",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "rating": {
+          "description": "filter by rating: critical, poor, fair, good, excellent",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "since": {
+          "description": "only assessments created on/after this date (YYYY-MM-DD or RFC3339)",
+          "type": "string"
+        },
+        "status": {
+          "description": "filter by status: completed, failed, processing, pending, cancelled, partial, incomplete",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "type": {
+          "description": "filter by assessment type: advanced, baseline, guided, pen_test, workstation",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "until": {
+          "description": "only assessments created on/before this date (YYYY-MM-DD or RFC3339)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "assessments": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_ref": {
+                "type": "string"
+              },
+              "assessment_ref": {
+                "type": "string"
+              },
+              "build_version": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "findings": {
+                "additionalProperties": false,
+                "properties": {
+                  "artifacts": {
+                    "type": "integer"
+                  },
+                  "critical": {
+                    "type": "integer"
+                  },
+                  "high": {
+                    "type": "integer"
+                  },
+                  "info": {
+                    "type": "integer"
+                  },
+                  "low": {
+                    "type": "integer"
+                  },
+                  "medium": {
+                    "type": "integer"
+                  },
+                  "pass": {
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
+                  },
+                  "warn": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low",
+                  "warn",
+                  "info"
+                ],
+                "type": "object"
+              },
+              "findings_available": {
+                "type": "boolean"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "package": {
+                "type": "string"
+              },
+              "package_version": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "policy": {
+                "type": "string"
+              },
+              "rating": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "track": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "assessment_ref",
+              "track",
+              "findings_available",
+              "platform",
+              "package",
+              "score",
+              "status",
+              "findings"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "page": {
+          "additionalProperties": false,
+          "properties": {
+            "has_next_page": {
+              "type": "boolean"
+            },
+            "next_cursor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "has_next_page"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "assessments",
+        "page"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "list_mari_apps",
+    "description": "List third-party apps in your NowSecure MARI (Mobile App Risk Intelligence) catalog with their risk score, letter rating (A-F), and risk category (LOW/MEDIUM/HIGH). The starting point for third-party / supply-chain app vetting. risk_score (0-100, HIGHER is worse — the opposite polarity of Platform scores) is bucketed upstream into risk_rating (A-F) and risk_category (LOW/MEDIUM/HIGH); the thresholds are upstream-defined and the axes don't align intuitively (category LOW reaches C-rated scores ~50), so filter on the axis your policy uses. Sorted riskiest-first by default. Offset-paginated: use page_number (1-based) and page_size. Filter by platform, rating, risk_category, or search. Correlate an app with the Platform portfolio by matching (package, platform). Default text block is a compact table (one row per app; '# ' comment lines carry total and the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_title": {
+          "description": "filter to specific app titles",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "format": {
+          "description": "text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON",
+          "type": "string"
+        },
+        "order_by": {
+          "description": "sort order: title, updated_at, risk_score, created_at (prefix with - for descending; default -risk_score, riskiest first)",
+          "type": "string"
+        },
+        "page_number": {
+          "description": "1-based page number (offset pagination; must be \u003e= 1)",
+          "type": [
+            "null",
+            "integer"
+          ]
+        },
+        "page_size": {
+          "description": "max apps per page (upstream cap 100)",
+          "type": "integer"
+        },
+        "platform": {
+          "description": "filter by platform: android or ios",
+          "type": "string"
+        },
+        "rating": {
+          "description": "filter by risk rating letters: A, B, C, D, F",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "risk_category": {
+          "description": "filter by risk category: LOW, MEDIUM, HIGH",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "search": {
+          "description": "filter by app title/package search text",
+          "type": "string"
+        },
+        "since": {
+          "description": "only apps ADDED to the catalog on/after this date (YYYY-MM-DD or RFC3339); does not filter updated_at",
+          "type": "string"
+        },
+        "until": {
+          "description": "only apps ADDED to the catalog on/before this date (YYYY-MM-DD or RFC3339); does not filter updated_at",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "application_id": {
+                "description": "store id (ios) / package name (android)",
+                "type": "string"
+              },
+              "assessment_ref": {
+                "type": "string"
+              },
+              "build_version": {
+                "type": "string"
+              },
+              "created_at": {
+                "description": "when the app was added to the catalog — the date since/until filter against",
+                "type": "string"
+              },
+              "package": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "risk_category": {
+                "type": "string"
+              },
+              "risk_rating": {
+                "type": "string"
+              },
+              "risk_recommendation": {
+                "type": "string"
+              },
+              "risk_score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "platform",
+              "package",
+              "application_id",
+              "risk_score"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "page": {
+          "additionalProperties": false,
+          "properties": {
+            "has_next_page": {
+              "type": "boolean"
+            },
+            "next_page_number": {
+              "description": "pass as page_number to fetch the next page (absent on the last page)",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "has_next_page"
+          ],
+          "type": "object"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "apps",
+        "total",
+        "page"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "search_findings",
+    "description": "Search the finding catalog by free text: case-insensitive substring match over finding key, title, description/impact prose, and category. The front door when you know a topic or risk but not a finding's key — e.g. every finding related to \"cleartext\", \"keyboard cache\", or \"janus\". Static reference data (portfolio-independent): rows say nothing about whether YOUR apps are affected — feed key into get_finding (docs/remediation), get_apps_affected_by_finding (fleet impact), or get_assessment_findings check_ids (that finding in a specific scan). Returns compact rows (key, title, platform, severity, category, matched_in) with key/title matches sorted first; a match visible only in prose carries a snippet of the surrounding text. platform omitted on a row means the finding applies to both android and ios. Deprecated checks are excluded by default (excluded_deprecated counts matches that were hidden; include_deprecated=true restores them, each row's covered_by naming its replacements). Default text block is a compact table (one row per match; '# ' comment lines carry the query and totals); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "description": "text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON",
+          "type": "string"
+        },
+        "include_deprecated": {
+          "description": "include deprecated checks (default false; excluded_deprecated reports how many matches were hidden, and each deprecated row's covered_by names its replacements)",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "max matches to return (default 25; total always reports the full match count)",
+          "type": "integer"
+        },
+        "platform": {
+          "description": "filter by platform: android or ios (findings that apply to both platforms always pass)",
+          "type": "string"
+        },
+        "query": {
+          "description": "free text to substring-match (case-insensitive) against finding key, title, description/impact prose, and category; spaces also match key underscores (so \"janus vuln\" hits android_janus_vuln)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "excluded_deprecated": {
+          "description": "matches hidden because the finding is deprecated; include_deprecated=true restores them",
+          "type": "integer"
+        },
+        "findings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "description": "lab analysis category (matches get_assessment_findings rows)",
+                "type": "string"
+              },
+              "covered_by": {
+                "description": "replacement findings for a deprecated one",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "deprecated": {
+                "type": "boolean"
+              },
+              "key": {
+                "type": "string"
+              },
+              "matched_in": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "platform": {
+                "type": "string"
+              },
+              "severity": {
+                "description": "typical severity of the finding when an app is affected",
+                "type": "string"
+              },
+              "snippet": {
+                "description": "prose context around the match when it is only visible in description text",
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "title",
+              "matched_in"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "query": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "total_returned": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query",
+        "total",
+        "total_returned",
+        "findings"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  }
+]
