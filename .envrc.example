@@ -1,0 +1,6 @@
+# Copy to .envrc (direnv) or source manually. Do NOT commit the real token.
+# Mint a token at https://app.nowsecure.com/account#token
+export NOWSECURE_API_TOKEN="paste-your-token-here"
+
+# Optional: override the API base URL (default https://api.nowsecure.com)
+# export NOWSECURE_API_URL="https://api.nowsecure.com"

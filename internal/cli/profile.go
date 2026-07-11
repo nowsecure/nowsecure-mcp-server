@@ -1,0 +1,202 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"nsmcp/internal/config"
+	"nsmcp/internal/nsclient"
+	"nsmcp/internal/urlparse"
+)
+
+// newProfileCmd builds the "profile" command tree. It lets an operator verify
+// endpoint shapes live with a real token; output is pretty JSON to stdout.
+// Profile always resolves config with both tool groups enabled — it drives the
+// REST client directly and ignores --platform/--mari.
+func newProfileCmd(opts *rootOptions) *cobra.Command {
+	profile := &cobra.Command{
+		Use:   "profile",
+		Short: "Call the NowSecure REST API directly (verification)",
+		Long:  "Call the NowSecure REST API directly and print pretty JSON to stdout.\nHandy for verifying endpoint shapes against a live tenant.",
+		// A parent command with subcommands is, by cobra's default, non-runnable
+		// and treats "profile bogus" as a help request (no error). Giving it a
+		// RunE makes bare "profile" print help but "profile <unknown>" error.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			return fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())
+		},
+	}
+
+	profile.AddCommand(
+		&cobra.Command{
+			Use:   "apps",
+			Short: "List portfolio apps",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				c, err := newProfileClient(opts)
+				if err != nil {
+					return err
+				}
+				res, err := c.ListApps(cmd.Context(), nsclient.ListAppsParams{PageSize: 20})
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+		&cobra.Command{
+			Use:   "assessments <package>",
+			Short: "List a package's assessment (scan) history",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, err := newProfileClient(opts)
+				if err != nil {
+					return err
+				}
+				res, err := c.ListAssessments(cmd.Context(), nsclient.ListAssessmentsParams{PackageKey: args[0], PageSize: 20})
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+		&cobra.Command{
+			Use:   "findings <app_ref> [assessment_ref]",
+			Short: "Get an assessment's findings (affected-only)",
+			Args:  cobra.RangeArgs(1, 2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, err := newProfileClient(opts)
+				if err != nil {
+					return err
+				}
+				ref := ""
+				if len(args) > 1 {
+					ref = args[1]
+				}
+				res, err := c.GetAssessmentFindings(cmd.Context(), nsclient.FindingsParams{AppRef: args[0], AssessmentRef: ref, AffectedOnly: true})
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+		&cobra.Command{
+			Use:   "finding <key>",
+			Short: "Get a finding's remediation document",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, err := newProfileClient(opts)
+				if err != nil {
+					return err
+				}
+				res, err := c.GetFinding(cmd.Context(), args[0])
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+		&cobra.Command{
+			Use:   "affected <key>",
+			Short: "List apps affected by a finding",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, err := newProfileClient(opts)
+				if err != nil {
+					return err
+				}
+				res, err := c.AppsAffectedByFinding(cmd.Context(), args[0], nsclient.AffectedByParams{PageSize: 20})
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+		&cobra.Command{
+			Use:   "mari",
+			Short: "List MARI (risk intelligence) apps",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				c, err := newProfileClient(opts)
+				if err != nil {
+					return err
+				}
+				res, err := c.ListMARIApps(cmd.Context(), nsclient.ListMARIAppsParams{PageSize: 20, PageNumber: 1})
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+		&cobra.Command{
+			Use:   "mari-assessment <ref> [expand,...]",
+			Short: "Get a MARI assessment (unfiltered view)",
+			Args:  cobra.RangeArgs(1, 2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, err := newProfileClient(opts)
+				if err != nil {
+					return err
+				}
+				var expand []string
+				if len(args) > 1 {
+					expand = splitCSV(args[1])
+				}
+				res, err := c.GetMARIAssessment(cmd.Context(), args[0], expand)
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+		&cobra.Command{
+			Use:   "url <url>",
+			Short: "Decode a NowSecure console URL into ids",
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				res, err := urlparse.Parse(args[0])
+				if err != nil {
+					return err
+				}
+				return printJSON(cmd, res)
+			},
+		},
+	)
+	return profile
+}
+
+// newProfileClient resolves config (both tool groups on, matching the old
+// profile behaviour) and returns a REST client.
+func newProfileClient(opts *rootOptions) (*nsclient.Client, error) {
+	cfg, err := config.Resolve(config.Inputs{
+		Token: opts.token, BaseURL: opts.baseURL,
+		Platform: true, MARI: true,
+		StoredToken: storedTokenFn,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return nsclient.New(cfg.BaseURL, cfg.Token, nsclient.WithUserAgent("nsmcp-profile/"+opts.version)), nil
+}
+
+func printJSON(cmd *cobra.Command, v any) error {
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+// splitCSV splits a comma-separated list, trimming whitespace and dropping
+// empty fields (so "a, ,b," -> ["a","b"]).
+func splitCSV(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}

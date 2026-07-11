@@ -1,0 +1,15 @@
+# build output
+/nsmcp
+
+# local secrets / direnv
+.envrc
+.env
+
+# editor / OS
+.DS_Store
+*.swp
+
+# local-only AI/agent state and docs
+.local
+.claude/
+.worktreeinclude
