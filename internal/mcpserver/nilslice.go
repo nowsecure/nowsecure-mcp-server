@@ -13,7 +13,9 @@ import (
 func denilOutput[In, Out any](h mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		res, out, err := h(ctx, req, in)
-		denilSlices(out)
+		// &out, not out: a value-typed Out is unaddressable and reflection
+		// couldn't set its fields — the guard would silently no-op.
+		denilSlices(&out)
 		return res, out, err
 	}
 }
