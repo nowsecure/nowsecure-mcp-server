@@ -1,0 +1,10 @@
+{
+  "extends": ["config:recommended"],
+  "automerge": false,
+  "packageRules": [
+    {
+      "groupName": "modelcontextprotocol/go-sdk (pre-1.0, manual review)",
+      "matchPackageNames": ["github.com/modelcontextprotocol/go-sdk"]
+    }
+  ]
+}
