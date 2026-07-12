@@ -187,7 +187,14 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 		f = f.add("type", typ)
 	}
 	f.apply(q)
-	setOrderBy(q, p.OrderBy)
+	// Upstream's default sort is buildVersion compared as a string ("7" > "39"
+	// > "30" > "14"), which scatters old scans into the small first page — send
+	// an explicit order whenever the caller gives none so newest-first holds.
+	orderBy := p.OrderBy
+	if strings.TrimSpace(orderBy) == "" {
+		orderBy = "-created_at"
+	}
+	setOrderBy(q, orderBy)
 	pageSize := p.PageSize
 	if pageSize == 0 {
 		pageSize = pageSizeFromCursor(p.Cursor)
@@ -212,7 +219,17 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 	if raw.PageInfo.HasNextPage {
 		out.Page.NextCursor = raw.PageInfo.Cursor
 	}
+	seen := make(map[string]int, len(raw.Rows)) // ref -> index in out.Assessments
 	for _, r := range raw.Rows {
+		// Upstream occasionally serves the same assessment twice in one page,
+		// one copy missing the application name — keep a single row per ref
+		// and backfill the title from the richer duplicate.
+		if i, ok := seen[r.Ref]; ok {
+			if out.Assessments[i].Title == "" {
+				out.Assessments[i].Title = r.Application.Name
+			}
+			continue
+		}
 		// Store-monitor rows arrive without an application ref or applied
 		// policy and have no lab analysis behind them: their findings cannot
 		// be served and their pass count was never computed.
@@ -226,6 +243,7 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 		if appRef == "" && p.ApplicationRef != "" {
 			appRef = p.ApplicationRef // rows can only belong to the app the query was scoped to
 		}
+		seen[r.Ref] = len(out.Assessments)
 		out.Assessments = append(out.Assessments, Assessment{
 			Ref:               r.Ref,
 			Title:             r.Application.Name,

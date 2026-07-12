@@ -142,6 +142,59 @@ func TestListAssessments_PageSizeDefaultAndClamp(t *testing.T) {
 	}
 }
 
+// TestListAssessments_DefaultOrderNewestFirst guards the newest-first promise:
+// upstream's default sort is buildVersion compared as a string ("7" > "39" >
+// "14"), so an order must always be sent when the caller gives none.
+func TestListAssessments_DefaultOrderNewestFirst(t *testing.T) {
+	var gotOrderBy string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotOrderBy = r.URL.Query().Get("orderBy")
+		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
+	})
+	ctx := t.Context()
+	if _, err := c.ListAssessments(ctx, ListAssessmentsParams{ApplicationRef: "app-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotOrderBy != "-createdAt" {
+		t.Errorf("default orderBy sent = %q, want -createdAt", gotOrderBy)
+	}
+	if _, err := c.ListAssessments(ctx, ListAssessmentsParams{ApplicationRef: "app-1", OrderBy: "build_version"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotOrderBy != "buildVersion" {
+		t.Errorf("explicit orderBy sent = %q, want buildVersion (caller's choice preserved)", gotOrderBy)
+	}
+}
+
+// TestListAssessments_DedupRows guards against the upstream quirk where one
+// page serves the same assessment twice, one copy missing the application
+// name: a single row survives, with the title backfilled from the richer copy.
+func TestListAssessments_DedupRows(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"rows":[
+				{"ref":"as-dup","application":{"ref":"app-1"},"platformType":"ios","packageKey":"com.x","appliedPolicy":{"name":"P"},"impactTypes":{}},
+				{"ref":"as-dup","application":{"ref":"app-1","name":"Acme"},"platformType":"ios","packageKey":"com.x","appliedPolicy":{"name":"P"},"impactTypes":{}},
+				{"ref":"as-2","application":{"ref":"app-1","name":"Acme"},"platformType":"ios","packageKey":"com.x","appliedPolicy":{"name":"P"},"impactTypes":{}}
+			],
+			"pageInfo":{"hasNextPage":false}
+		}`))
+	})
+	got, err := c.ListAssessments(t.Context(), ListAssessmentsParams{ApplicationRef: "app-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Assessments) != 2 {
+		t.Fatalf("rows = %d, want 2 (duplicate ref collapsed): %+v", len(got.Assessments), got.Assessments)
+	}
+	if got.Assessments[0].Ref != "as-dup" || got.Assessments[0].Title != "Acme" {
+		t.Errorf("row 0 = ref %q title %q, want as-dup with title backfilled from the duplicate", got.Assessments[0].Ref, got.Assessments[0].Title)
+	}
+	if got.Assessments[1].Ref != "as-2" {
+		t.Errorf("row 1 ref = %q, want as-2", got.Assessments[1].Ref)
+	}
+}
+
 func TestGetAssessmentFindings_ResolveAndCompact(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
