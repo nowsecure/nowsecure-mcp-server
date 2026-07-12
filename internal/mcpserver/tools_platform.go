@@ -88,7 +88,7 @@ type listAppsInput struct {
 	ApplicationRefs   []string `json:"app_refs,omitempty" jsonschema:"limit to these app_ref UUIDs (from list_apps rows)"`
 	GroupRefs         []string `json:"group_refs,omitempty" jsonschema:"limit to these group UUIDs"`
 	Search            string   `json:"search,omitempty" jsonschema:"case-insensitive substring match on title or package, applied by nsmcp (the upstream API has no text filter); scans up to 20 upstream pages per call — repeat with next_cursor to continue"`
-	OrderBy           string   `json:"order_by,omitempty" jsonschema:"sort order: score, -score, created_at, -created_at, vulnerability_count, or -vulnerability_count; score ascending = riskiest first (score is higher-is-better); -score lists the best apps first"`
+	OrderBy           string   `json:"order_by,omitempty" jsonschema:"sort order: score, -score, created_at, -created_at, vulnerability_count, or -vulnerability_count; score ascending = riskiest first (score is higher-is-better, and the default); -score lists the best apps first"`
 	PageSize          int      `json:"page_size,omitempty" jsonschema:"max apps to return in this page (upstream cap 50)"`
 	Cursor            string   `json:"cursor,omitempty" jsonschema:"pagination cursor from a previous page's next_cursor"`
 	IncludeSummary    bool     `json:"include_summary,omitempty" jsonschema:"include a portfolio-level score/rating summary"`
@@ -143,7 +143,7 @@ type affectedInput struct {
 	Platform  string   `json:"platform,omitempty" jsonschema:"filter by platform: android or ios"`
 	Search    string   `json:"search,omitempty" jsonschema:"filter by app title/package search text"`
 	GroupRefs []string `json:"group_refs,omitempty" jsonschema:"limit to these group UUIDs"`
-	OrderBy   string   `json:"order_by,omitempty" jsonschema:"sort order: title, -title, package, -package, platform, -platform, created_at, -created_at"`
+	OrderBy   string   `json:"order_by,omitempty" jsonschema:"sort order: title, -title, package, -package, platform, -platform, created_at, -created_at (default -created_at: newest assessment first)"`
 	PageSize  int      `json:"page_size,omitempty" jsonschema:"max apps to return in this page (upstream cap 50)"`
 	Cursor    string   `json:"cursor,omitempty" jsonschema:"pagination cursor from a previous page's next_cursor"`
 	Format    string   `json:"format,omitempty" jsonschema:"text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON"`

@@ -144,6 +144,56 @@ func TestListApps_CursorPageSizeReused(t *testing.T) {
 	}
 }
 
+// TestListApps_DefaultOrderRiskiestFirst guards the listing contract: score
+// ascending (riskiest first) is upstream's implicit default, sent explicitly
+// so the order survives an upstream default change. Ties keep upstream's
+// unspecified order — the orderBy allowlist is single-field, so a compound
+// sort is not available (a percent-encoded comma is rejected with a 400).
+func TestListApps_DefaultOrderRiskiestFirst(t *testing.T) {
+	var gotOrderBy string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotOrderBy = r.URL.Query().Get("orderBy")
+		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
+	})
+	ctx := t.Context()
+	if _, err := c.ListApps(ctx, ListAppsParams{}); err != nil {
+		t.Fatal(err)
+	}
+	if gotOrderBy != "score" {
+		t.Errorf("default orderBy sent = %q, want score (riskiest first)", gotOrderBy)
+	}
+	if _, err := c.ListApps(ctx, ListAppsParams{OrderBy: "-vulnerability_count"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotOrderBy != "-vulnerabilityCount" {
+		t.Errorf("explicit orderBy sent = %q, want -vulnerabilityCount (caller's choice preserved)", gotOrderBy)
+	}
+}
+
+// TestAppsAffectedByFinding_DefaultOrderNewestFirst guards the affected-apps
+// default: upstream's unordered default has no contract, so -createdAt is
+// sent whenever the caller gives no order.
+func TestAppsAffectedByFinding_DefaultOrderNewestFirst(t *testing.T) {
+	var gotOrderBy string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotOrderBy = r.URL.Query().Get("orderBy")
+		_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
+	})
+	ctx := t.Context()
+	if _, err := c.AppsAffectedByFinding(ctx, "uses_http", AffectedByParams{}); err != nil {
+		t.Fatal(err)
+	}
+	if gotOrderBy != "-createdAt" {
+		t.Errorf("default orderBy sent = %q, want -createdAt", gotOrderBy)
+	}
+	if _, err := c.AppsAffectedByFinding(ctx, "uses_http", AffectedByParams{OrderBy: "title"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotOrderBy != "title" {
+		t.Errorf("explicit orderBy sent = %q, want title (caller's choice preserved)", gotOrderBy)
+	}
+}
+
 func TestListApps_ThresholdSeverityValidatedClientSide(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("request must not reach upstream")

@@ -101,7 +101,17 @@ func (c *Client) listAppsRaw(ctx context.Context, p ListAppsParams, pageSize int
 		f = f.add("groupRefs", p.GroupRefs)
 	}
 	f.apply(q)
-	setOrderBy(q, p.OrderBy)
+	// Send upstream's implicit default (score ascending, riskiest first)
+	// explicitly so the contract holds if that default ever drifts. Ties keep
+	// upstream's unspecified order: the allowlist is single-field only — a
+	// compound "orderBy=score,createdAt" 400s when the comma is
+	// percent-encoded (it survives a curl with a literal comma only through
+	// an accidental array-parse path, which is nothing to build on).
+	orderBy := p.OrderBy
+	if strings.TrimSpace(orderBy) == "" {
+		orderBy = "score"
+	}
+	setOrderBy(q, orderBy)
 	setInt(q, "pageSize", pageSize)
 	setStr(q, "cursor", cursor)
 	if includeSummary {
@@ -705,7 +715,15 @@ func (c *Client) AppsAffectedByFinding(ctx context.Context, findingKeyOrID strin
 		f = f.add("groupRefs", p.GroupRefs)
 	}
 	f.apply(q)
-	setOrderBy(q, p.OrderBy)
+	// Upstream's unordered default has no contract (neither createdAt
+	// direction matches); rows surface created_at as the latest assessment
+	// date, so newest-assessed first is the natural read. Verified honored
+	// server-side.
+	orderBy := p.OrderBy
+	if strings.TrimSpace(orderBy) == "" {
+		orderBy = "-created_at"
+	}
+	setOrderBy(q, orderBy)
 	pageSize := p.PageSize
 	if pageSize == 0 {
 		pageSize = pageSizeFromCursor(p.Cursor)

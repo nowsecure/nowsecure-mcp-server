@@ -94,7 +94,7 @@
           ]
         },
         "order_by": {
-          "description": "sort order: title, -title, package, -package, platform, -platform, created_at, -created_at",
+          "description": "sort order: title, -title, package, -package, platform, -platform, created_at, -created_at (default -created_at: newest assessment first)",
           "type": "string"
         },
         "page_size": {
@@ -825,7 +825,7 @@
           "type": "boolean"
         },
         "order_by": {
-          "description": "sort order: score, -score, created_at, -created_at, vulnerability_count, or -vulnerability_count; score ascending = riskiest first (score is higher-is-better); -score lists the best apps first",
+          "description": "sort order: score, -score, created_at, -created_at, vulnerability_count, or -vulnerability_count; score ascending = riskiest first (score is higher-is-better, and the default); -score lists the best apps first",
           "type": "string"
         },
         "page_size": {
