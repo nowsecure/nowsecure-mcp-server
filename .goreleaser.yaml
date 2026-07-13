@@ -51,10 +51,7 @@ changelog:
 
 release:
   header: |
-    nsmcp is the NowSecure MCP server and CLI, exposing read-only tools for
-    the NowSecure Platform and MARI (Mobile App Risk Intelligence) over the
-    Model Context Protocol.
+    nsmcp is the NowSecure MCP server and CLI, exposing read-only tools for the NowSecure Platform and MARI (Mobile App Risk Intelligence) over the Model Context Protocol.
   footer: |
-    > **macOS:** binaries are unsigned; if Gatekeeper blocks a downloaded
-    > binary, clear the quarantine flag:
+    > **macOS:** binaries are unsigned; if Gatekeeper blocks a downloaded binary, clear the quarantine flag:
     > `xattr -d com.apple.quarantine ./nsmcp`
