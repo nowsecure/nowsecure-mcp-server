@@ -17,7 +17,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"The primary starting point for DevSecOps triage. Returns a compact row per app (title, platform, package, score, rating, vulnerability_count, app_ref, assessment_ref, group, group_ref — rows are the group-discovery source for group_refs params). " +
 			"score is 0-100 where HIGHER is better (the opposite polarity of MARI risk scores); correlate an app with the MARI catalog by matching (package, platform). " +
 			"search is the front door for the MARI↔Platform (package, platform) join, and one package can match multiple portfolio apps (one per group) — all are returned. " +
-			"Apps that have never been scanned omit score and assessment_ref. " +
+			"The portfolio covers only the last 12 months: an app is listed if and only if it has a completed scan in that window — apps whose newest scan is older, and apps never scanned, are absent entirely, so absence here does not mean the app is unknown (list_assessments is not windowed and still serves their history by app_ref or package). " +
 			"Cursor-paginated: pass the returned next_cursor to fetch the next page. Use threshold_score/threshold_severity to focus on the riskiest apps. " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry the total match count, the page envelope, and — with include_summary — the portfolio summary); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
@@ -30,6 +30,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"Note: package/appstore_key scoping merges the history of EVERY app sharing that id across groups; use app_ref for one app's history. " +
 			"Rows with track=store_monitor come from store monitoring, not lab analysis: their finding counts use a different upstream source than get_assessment_findings (which cannot serve them — check findings_available). " +
 			"Further filter by platform/status/rating/type/date. Cursor-paginated: pages default to the 10 newest scans and page_size caps at 25 (larger values are clamped) — follow next_cursor for older history. " +
+			"Unlike the portfolio tools (list_apps, get_apps_affected_by_finding), history is NOT limited to the last 12 months: this tool still sees apps that have aged out of the portfolio. " +
 			"Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
 		Annotations: readOnlyAPI(),
 	}, s.listAssessments)
@@ -41,6 +42,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 			"or re-query with check_ids=[...] for full recommendations on specific findings, or include_recommendations=true for truncated ones on every row. " +
 			"Takes app_ref (returned by list_apps/list_assessments); assessment_ref is optional — when omitted, the assessment the app's portfolio row points at is used (its latest known scan, which can lag a just-finished one) — " +
 			"check the returned status/created_at, and pass an explicit ref from a list_assessments row with findings_available=true to pin a scan. " +
+			"The app must still be in the portfolio's 12-month window (a completed scan in the last 12 months): an app_ref that has aged out fails with 'not found in portfolio' even though list_assessments still lists its history. " +
 			"The response echoes the applied report profile. Defaults to affected findings only; use affected_only=false, min_severity, or limit to adjust the size. " +
 			"The default omits artifact-category inventory rows (counts still show them as counts.artifacts; include_artifacts=true restores them); min_severity=low returns exactly the scored vulnerabilities behind vulnerability_count. " +
 			"Default text block is a compact table (one row per finding; '# ' comment lines carry counts and the report/status/created_at envelope), forced to json when check_ids or include_recommendations pulls in recommendation prose; pass format:\"json\" to mirror the full JSON in the text block otherwise. structuredContent always carries the canonical JSON.",
@@ -52,7 +54,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 		Description: "Get documentation for a single finding by key or id: title, category, severity/CVSS range, description, steps to reproduce, testing method, and markdown remediation guidance. " +
 			"Static reference data (no per-app evidence). Use include=[...] to fetch only specific prose sections (e.g. just remediation). " +
 			"Two taxonomies: category is the lab analysis category (lowercase; matches get_assessment_findings rows), categories are capability groups (Title Case). " +
-			"platform is omitted for findings that apply to both android and ios; application_count equals get_apps_affected_by_finding's total. " +
+			"platform is omitted for findings that apply to both android and ios; application_count equals get_apps_affected_by_finding's total and shares its 12-month portfolio window (apps last scanned earlier are not counted). " +
 			"Use after list_apps/get_assessment_findings to understand or remediate a specific finding.",
 		Annotations: readOnlyAPI(),
 	}, s.getFinding)
@@ -72,7 +74,8 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 	addTool(s, server, &mcp.Tool{
 		Name: "get_apps_affected_by_finding",
 		Description: "Fleet-wide impact: list portfolio apps whose latest assessment is affected by a given finding (key or id). " +
-			"Answers 'which of my apps are exposed to X?'. Cursor-paginated; filter by platform, group, or search text. " +
+			"Answers 'which of my apps are exposed to X?'. Coverage is the portfolio's 12-month window: only apps with a completed scan in the last 12 months are listed or counted in total — an app last scanned earlier is absent even if that scan was affected. " +
+			"Cursor-paginated; filter by platform, group, or search text. " +
 			"Rows carry no score/rating (join app_ref to list_apps to prioritize); created_at is the latest assessment date (what order_by=created_at sorts by). " +
 			"A platform filter is orthogonal to the finding's own platform (e.g. an android-only finding with platform=ios) and legitimately returns an empty list with total:0. " +
 			"Default text block is a compact table (one row per app; '# ' comment lines carry finding/total and the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
@@ -113,7 +116,7 @@ type listAssessmentsInput struct {
 }
 
 type getFindingsInput struct {
-	AppRef           string   `json:"app_ref" jsonschema:"application UUID (the app_ref from list_apps or list_assessments)"`
+	AppRef           string   `json:"app_ref" jsonschema:"application UUID (the app_ref from list_apps or list_assessments); the app must still be in the portfolio's 12-month window — refs for apps last scanned over 12 months ago fail with 'not found in portfolio'"`
 	AssessmentRef    string   `json:"assessment_ref,omitempty" jsonschema:"assessment UUID, or a numeric task id as extracted from a console URL by decode_nowsecure_url; omit to use the app's latest assessment"`
 	AffectedOnly     *bool    `json:"affected_only,omitempty" jsonschema:"only return findings the app is affected by (default true)"`
 	MinSeverity      string   `json:"min_severity,omitempty" jsonschema:"only return findings at this severity or higher: info, warn, low, medium, high, critical"`

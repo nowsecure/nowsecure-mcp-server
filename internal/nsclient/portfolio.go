@@ -124,7 +124,12 @@ func (c *Client) listAppsRaw(ctx context.Context, p ListAppsParams, pageSize int
 	return &raw, nil
 }
 
-// ListApps lists portfolio applications.
+// ListApps lists portfolio applications. Upstream scopes the portfolio to a
+// rolling 12-month window: an app is present iff it has a completed assessment
+// in the last 12 months — older-scanned and never-scanned apps are absent
+// entirely, never score-less (verified 2026-07 against the un-windowed GraphQL
+// auto.applications list: 89/394 apps in-window, zero exceptions). The other
+// /v2/portfolio endpoints (affected-apps, applicationCount) share the window.
 func (c *Client) ListApps(ctx context.Context, p ListAppsParams) (*AppPage, error) {
 	if p.PageSize < 0 {
 		return nil, fmt.Errorf("page_size must not be negative")
@@ -256,7 +261,7 @@ func (c *Client) GetAppByRef(ctx context.Context, appRef string) (*App, error) {
 		if v, ok := uuidVersion(appRef); ok && v == '4' {
 			return nil, fmt.Errorf("application ref %q not found in portfolio; this is a v4 UUID — Platform app refs are v1; if it came from MARI, pass it to get_mari_assessment as assessment_ref", appRef)
 		}
-		return nil, fmt.Errorf("application ref %q not found in portfolio", appRef)
+		return nil, fmt.Errorf("application ref %q not found in portfolio — the portfolio covers only apps with a completed scan in the last 12 months, so a ref for an app last scanned earlier lands here too; list_assessments (app_ref or package scope) still serves its history", appRef)
 	}
 	app := raw.Rows[0].toApp()
 	c.cache.set("app:"+appRef, &app)

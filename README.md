@@ -20,6 +20,11 @@ both are enabled by default, and at least one must be enabled.
 Triage your own mobile app portfolio: scores, findings, fleet-wide impact, and
 remediation guidance.
 
+The portfolio covers a rolling 12-month window: apps without a completed scan
+in the last 12 months are absent from `list_apps` and
+`get_apps_affected_by_finding` entirely. `list_assessments` is not windowed
+and still serves their older scan history.
+
 | Tool | Description |
 | --- | --- |
 | `list_apps` | List portfolio apps with their latest security score, rating, and open vulnerability count. The starting point for DevSecOps triage. |
