@@ -30,6 +30,16 @@ checksum:
 
 changelog:
   sort: asc
+  abbrev: 7
+  groups:
+    - title: Features
+      regexp: '^feat(\(.*\))?:'
+      order: 0
+    - title: Bug fixes
+      regexp: '^fix(\(.*\))?:'
+      order: 1
+    - title: Other
+      order: 999
   filters:
     exclude:
       - "^docs:"
