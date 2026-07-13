@@ -31,6 +31,7 @@ checksum:
 changelog:
   sort: asc
   abbrev: 7
+  format: "[`{{ .SHA }}`](https://github.com/nowsecure/nowsecure-mcp-server/commit/{{ .SHA }}) {{ .Message }}"
   groups:
     - title: Features
       regexp: '^feat(\(.*\))?:'
