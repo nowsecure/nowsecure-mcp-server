@@ -8,8 +8,7 @@ A small **Model Context Protocol (MCP) server** for two NowSecure products —
 AI assistant a focused set of read-only tools for each — see
 [Supported products and tools](#supported-products-and-tools).
 
-nsmcp runs **locally on stdio**. Each client below launches the `nsmcp` binary
-itself.
+nsmcp runs **locally** as a CLI process.
 
 ## Supported products and tools
 
@@ -285,6 +284,18 @@ command = "nsmcp"
 args = ["serve"]
 env = { NOWSECURE_API_TOKEN = "YOUR_TOKEN" }
 ```
+
+</details>
+
+<details>
+<summary><strong>ChatGPT (Desktop)</strong></summary>
+
+**Desktop app (Codex features) — local stdio, like other clients.** The
+ChatGPT desktop app shares MCP configuration with Codex
+(`~/.codex/config.toml`), so the Codex CLI setup above also enables nsmcp
+here. Or add it in-app: Settings → **MCP servers** → **Add server** →
+**STDIO**, command `nsmcp serve`. This powers the app's Codex/agent features,
+not regular chat conversations. See [docs](https://developers.openai.com/api/docs/guides/tools-connectors-mcp) for details.
 
 </details>
 
