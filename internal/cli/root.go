@@ -71,7 +71,7 @@ Environment:
                              unset (default) means no logging
 
 Authenticate with "nsmcp login", or mint a token at
-https://app.nowsecure.com/account#token.`,
+https://app.nowsecure.com/account/tokens.`,
 		Version: build.String(),
 		// No subcommand => run the stdio server (preserves the old default).
 		// The --http flags live on the serve subcommand only.
