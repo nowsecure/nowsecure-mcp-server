@@ -64,8 +64,10 @@ func (s *srv) listMARIApps(ctx context.Context, _ *mcp.CallToolRequest, in listM
 	if err != nil {
 		return nil, nil, err
 	}
-	// *int distinguishes an explicit page_number from unset; upstream silently
-	// clamps <1 to page 1, so reject it rather than lie about the page.
+	// *int distinguishes an explicit page_number from unset. The client only
+	// sends pageNumber for values >= 1 (upstream is 0-based and rejects
+	// negatives), so anything smaller would silently return first-page data —
+	// reject it rather than lie about the page.
 	pageNumber := 0
 	if in.PageNumber != nil {
 		if *in.PageNumber < 1 {
