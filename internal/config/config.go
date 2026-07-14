@@ -15,7 +15,7 @@ import (
 )
 
 // DefaultBaseURL is the NowSecure Platform API for production tenants.
-// Tokens are minted at https://app.nowsecure.com/account#token.
+// Tokens are minted at https://app.nowsecure.com/account/tokens.
 const DefaultBaseURL = "https://api.nowsecure.com"
 
 // tokenEnvVars are checked in order; the first non-empty value wins.
@@ -75,7 +75,7 @@ func Resolve(in Inputs) (*Config, error) {
 
 	if c.Token == "" && !in.TokenOptional {
 		return nil, fmt.Errorf("no API token found: run `nsmcp login`, set NOWSECURE_API_TOKEN, or pass --token. " +
-			"Tokens can also be minted at https://app.nowsecure.com/account#token")
+			"Tokens can also be minted at https://app.nowsecure.com/account/tokens")
 	}
 	if !c.EnablePlatform && !c.EnableMARI {
 		return nil, fmt.Errorf("no tool groups enabled: enable at least one of --platform or --mari")

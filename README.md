@@ -71,7 +71,7 @@ To reduce risk:
 - Only use trusted MCP clients, and review which other MCP servers and tools
   are enabled alongside nsmcp.
 - Apply least privilege: use short-lived, scoped tokens and revoke ones you
-  no longer use at <https://app.nowsecure.com/account#token>.
+  no longer use at <https://app.nowsecure.com/account/tokens>.
 - Disable the tool group you don't need (`--platform=false` / `--mari=false`).
 - Require human confirmation for high-impact actions an agent takes in the
   same session it reads nsmcp data.
@@ -96,7 +96,7 @@ To reduce risk:
 2. Get credentials:
 
    - **Static token (works today):** mint one at
-     <https://app.nowsecure.com/account#token> and set `NOWSECURE_API_TOKEN`.
+     <https://app.nowsecure.com/account/tokens> and set `NOWSECURE_API_TOKEN`.
    - **`nsmcp login` (coming soon):** OAuth device-code login — not usable
      until the dedicated Auth0 CLI client is provisioned; see
      [Log in with your NowSecure account](#log-in-with-your-nowsecure-account).
@@ -130,7 +130,7 @@ prefill the nsmcp config, so you don't need to edit any JSON by hand.
 Both buttons prefill a config with `"command": "nsmcp"`, so **`nsmcp` must
 already be on your `PATH`** for it to launch (edit the `command` field to an
 absolute path otherwise). After installing, replace `YOUR_TOKEN` with a real
-token from <https://app.nowsecure.com/account#token>.
+token from <https://app.nowsecure.com/account/tokens>.
 
 ## Per-client setup
 
@@ -335,7 +335,7 @@ uses `context_servers`, not `mcpServers`:
 | `NOWSECURE_OAUTH_AUDIENCE` | OAuth audience override for `nsmcp login` (default `https://app.nowsecure.com`). Env-specific on non-production tenants. |
 | `NSMCP_LOG_FILE` | Opt-in tool-call log path. When set, nsmcp opens it append-mode (`0600`) and writes one JSON line per tool call (tool name, `duration_ms`, error if any) plus one line at server start (version, mode, tool groups) — never call arguments or results. Unset (the default): no logging, nothing written to stderr or stdout. |
 
-Mint a static token at <https://app.nowsecure.com/account#token>.
+Mint a static token at <https://app.nowsecure.com/account/tokens>.
 
 Flags (accepted before or after the subcommand): `--token`, `--base-url`,
 `--platform` (default true), `--mari` (default true).
