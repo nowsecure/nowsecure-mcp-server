@@ -237,7 +237,8 @@ func TestListApps_ThresholdFilterScansUpstreamEnvelope(t *testing.T) {
 		switch r.URL.Query().Get("cursor") {
 		case "":
 			if severity {
-				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false,"cursor":null}}`))
+				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false,"cursor":null},
+					"summaryInfo":{"totalResults":11,"totalResultsWithFindingsAtLeastThresholdSeverity":3}}`))
 			} else {
 				_, _ = w.Write([]byte(`{"rows":[
 					{"ref":"best-1","title":"Best One","score":99},
@@ -295,8 +296,8 @@ func TestListApps_ThresholdFilterScansUpstreamEnvelope(t *testing.T) {
 	if got := []string{first.Apps[0].Title, first.Apps[1].Title}; fmt.Sprint(got) != "[Uber Driver NYSEG]" {
 		t.Fatalf("first page titles = %v, want Uber Driver and NYSEG", got)
 	}
-	if first.Total != 11 {
-		t.Errorf("first total = %d, want upstream portfolio total 11 on issue-1 branch", first.Total)
+	if first.Total != 3 {
+		t.Errorf("first total = %d, want exact severity match count 3", first.Total)
 	}
 	if !first.Page.HasNextPage || first.Page.NextCursor == "" {
 		t.Fatalf("first page envelope = %+v, want resumable upstream envelope", first.Page)
@@ -319,6 +320,9 @@ func TestListApps_ThresholdFilterScansUpstreamEnvelope(t *testing.T) {
 	if second.Page.HasNextPage {
 		t.Errorf("second page envelope = %+v, want exhausted", second.Page)
 	}
+	if second.Total != 3 {
+		t.Errorf("second total = %d, want global severity match count 3", second.Total)
+	}
 	if requests.Load() != 10 {
 		t.Errorf("upstream requests = %d, want five source/severity window pairs across both calls", requests.Load())
 	}
@@ -329,7 +333,13 @@ func TestListApps_ThresholdScoreScansAndFiltersRowsLocally(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if filters := r.URL.Query().Get("filters"); filters != "" {
-			t.Errorf("source request filters = %q, want threshold_score evaluated from rows", filters)
+			if !strings.Contains(filters, `"thresholdScore"`) || r.URL.Query().Get("cursor") != "" ||
+				r.URL.Query().Get("pageSize") != "1" {
+				t.Errorf("summary request = %q, want one-row global threshold_score summary", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false},
+				"summaryInfo":{"totalResults":6,"totalResultsBelowThresholdScore":2}}`))
+			return
 		}
 		switch r.URL.Query().Get("cursor") {
 		case "":
@@ -341,7 +351,7 @@ func TestListApps_ThresholdScoreScansAndFiltersRowsLocally(t *testing.T) {
 			_, _ = w.Write([]byte(`{"rows":[
 				{"ref":"risk-1","title":"Risk One","score":60},
 				{"ref":"risk-2","title":"Risk Two","score":55}
-			],"pageInfo":{"hasNextPage":false,"cursor":null},"summaryInfo":{"totalResults":4}}`))
+			],"pageInfo":{"hasNextPage":true,"cursor":"C4"},"summaryInfo":{"totalResults":6}}`))
 		default:
 			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
 		}
@@ -359,11 +369,107 @@ func TestListApps_ThresholdScoreScansAndFiltersRowsLocally(t *testing.T) {
 	if len(got.Apps) != 2 || got.Apps[0].Title != "Risk One" || got.Apps[1].Title != "Risk Two" {
 		t.Fatalf("apps = %+v, want both score <= 60 rows in source order", got.Apps)
 	}
-	if got.Page.HasNextPage {
-		t.Errorf("page = %+v, want exhausted", got.Page)
+	if !got.Page.HasNextPage || got.Page.NextCursor == "" {
+		t.Errorf("page = %+v, want remaining upstream envelope", got.Page)
 	}
-	if requests.Load() != 2 {
-		t.Errorf("requests = %d, want two source windows and no threshold-score request", requests.Load())
+	if got.Total != 2 {
+		t.Errorf("total = %d, want exact score match count 2", got.Total)
+	}
+	if requests.Load() != 3 {
+		t.Errorf("requests = %d, want two source windows plus one exact score summary", requests.Load())
+	}
+}
+
+func TestListApps_CombinedFiltersCountFullIntersection(t *testing.T) {
+	var requests atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		severity := strings.Contains(r.URL.Query().Get("filters"), `"thresholdSeverity"`)
+		if severity && strings.Contains(r.URL.Query().Get("filters"), `"thresholdScore"`) {
+			t.Errorf("severity request must not apply threshold_score before the local intersection")
+		}
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			if severity {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"a","title":"Match A","score":50},
+					{"ref":"b","title":"Match B","score":70}
+				],"pageInfo":{"hasNextPage":false}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"a","title":"Match A","score":50},
+					{"ref":"b","title":"Match B","score":70}
+				],"pageInfo":{"hasNextPage":true,"cursor":"C2"},"summaryInfo":{"totalResults":4}}`))
+			}
+		case "C2":
+			if severity {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"d","title":"Match D","score":45}
+				],"pageInfo":{"hasNextPage":false}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"c","title":"Other","score":40},
+					{"ref":"d","title":"Match D","score":45}
+				],"pageInfo":{"hasNextPage":false},"summaryInfo":{"totalResults":4}}`))
+			}
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	})
+
+	score := 60.0
+	first, err := c.ListApps(t.Context(), ListAppsParams{
+		ThresholdScore:    &score,
+		ThresholdSeverity: "high",
+		Search:            "match",
+		PageSize:          1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Apps) != 1 || first.Apps[0].AppRef != "a" {
+		t.Fatalf("first apps = %+v, want a only", first.Apps)
+	}
+	if first.Total != 2 || !first.Page.HasNextPage {
+		t.Fatalf("first result = %+v, want total 2 and a next page", first)
+	}
+
+	second, err := c.ListApps(t.Context(), ListAppsParams{
+		ThresholdScore:    &score,
+		ThresholdSeverity: "high",
+		Search:            "match",
+		Cursor:            first.Page.NextCursor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Apps) != 1 || second.Apps[0].AppRef != "d" {
+		t.Fatalf("second apps = %+v, want d only", second.Apps)
+	}
+	if second.Total != 2 || second.Page.HasNextPage {
+		t.Fatalf("second result = %+v, want global total 2 and exhausted page", second)
+	}
+	if requests.Load() != 8 {
+		t.Errorf("requests = %d, want two full source/severity scans", requests.Load())
+	}
+}
+
+func TestListApps_AppRefFilterHasExactTotal(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if filters := r.URL.Query().Get("filters"); filters != "" {
+			t.Errorf("source filters = %q, want app_refs evaluated over the complete envelope", filters)
+		}
+		fmt.Fprintf(w, `{"rows":[
+			{"ref":%q,"title":"Wanted"},
+			{"ref":%q,"title":"Other"}
+		],"pageInfo":{"hasNextPage":false},"summaryInfo":{"totalResults":2}}`, testUUIDv1, testUUIDv4)
+	})
+	got, err := c.ListApps(t.Context(), ListAppsParams{ApplicationRefs: []string{testUUIDv1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Apps) != 1 || got.Apps[0].AppRef != testUUIDv1 || got.Total != 1 {
+		t.Fatalf("result = %+v, want one returned app and total 1", got)
 	}
 }
 
@@ -399,26 +505,31 @@ func TestListApps_SearchScansAllPages(t *testing.T) {
 	if got.Page.HasNextPage {
 		t.Errorf("has_next_page = true, want false (scan exhausted the pages)")
 	}
+	if got.Total != 2 {
+		t.Errorf("total = %d, want exact search match count 2", got.Total)
+	}
 	if n := pages.Load(); n != 2 {
 		t.Errorf("upstream pages walked = %d, want 2", n)
 	}
 }
 
-func TestListApps_SearchWindowCutoff(t *testing.T) {
+func TestListApps_SearchExhaustsBeyondLegacyWindow(t *testing.T) {
+	const pagesToExhaust = 21
 	var pages atomic.Int32
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		n := pages.Add(1)
-		fmt.Fprintf(w, `{"rows":[],"pageInfo":{"hasNextPage":true,"cursor":"cur-%d"}}`, n)
+		hasNext := n < pagesToExhaust
+		fmt.Fprintf(w, `{"rows":[],"pageInfo":{"hasNextPage":%t,"cursor":"cur-%d"}}`, hasNext, n)
 	})
 	got, err := c.ListApps(t.Context(), ListAppsParams{Search: "zzz"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := pages.Load(); n != searchAppPages {
-		t.Errorf("upstream pages walked = %d, want %d (window cap)", n, searchAppPages)
+	if n := pages.Load(); n != pagesToExhaust {
+		t.Errorf("upstream pages walked = %d, want %d (complete scan)", n, pagesToExhaust)
 	}
-	if !got.Page.HasNextPage || got.Page.NextCursor != fmt.Sprintf("cur-%d", searchAppPages) {
-		t.Errorf("page = %+v, want has_next_page with the last upstream cursor passed through", got.Page)
+	if got.Page.HasNextPage || got.Total != 0 {
+		t.Errorf("result = %+v, want exhausted page and exact total 0", got)
 	}
 }
 

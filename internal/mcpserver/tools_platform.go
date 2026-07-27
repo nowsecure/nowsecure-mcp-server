@@ -90,7 +90,7 @@ type listAppsInput struct {
 	ThresholdSeverity string   `json:"threshold_severity,omitempty" jsonschema:"only list apps with a finding at this severity or higher: critical, high, medium, or low (finding severity, not the app rating — many apps rate \"critical\" without any critical-severity finding)"`
 	ApplicationRefs   []string `json:"app_refs,omitempty" jsonschema:"limit to these app_ref UUIDs (from list_apps rows)"`
 	GroupRefs         []string `json:"group_refs,omitempty" jsonschema:"limit to these group UUIDs"`
-	Search            string   `json:"search,omitempty" jsonschema:"case-insensitive substring match on title or package, applied by nsmcp (the upstream API has no text filter); scans up to 20 upstream pages per call — repeat with next_cursor to continue"`
+	Search            string   `json:"search,omitempty" jsonschema:"case-insensitive substring match on title or package, applied by nsmcp (the upstream API has no text filter); scans the complete portfolio so total is the exact match count"`
 	OrderBy           string   `json:"order_by,omitempty" jsonschema:"sort order: score, -score, created_at, -created_at, vulnerability_count, or -vulnerability_count; score ascending = riskiest first (score is higher-is-better, and the default); -score lists the best apps first"`
 	PageSize          int      `json:"page_size,omitempty" jsonschema:"max apps to return in this page (upstream cap 50)"`
 	Cursor            string   `json:"cursor,omitempty" jsonschema:"pagination cursor from a previous page's next_cursor"`
