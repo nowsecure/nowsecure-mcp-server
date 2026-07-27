@@ -833,7 +833,7 @@
           "type": "integer"
         },
         "search": {
-          "description": "case-insensitive substring match on title or package, applied by nsmcp (the upstream API has no text filter); scans up to 20 upstream pages per call — repeat with next_cursor to continue",
+          "description": "case-insensitive substring match on title or package, applied by nsmcp (the upstream API has no text filter); scans the complete portfolio so total is the exact match count",
           "type": "string"
         },
         "threshold_score": {

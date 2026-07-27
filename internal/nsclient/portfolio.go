@@ -63,9 +63,11 @@ type rawAppsResponse struct {
 	Rows        []rawAppRow   `json:"rows"`
 	PageInfo    rawCursorPage `json:"pageInfo"`
 	SummaryInfo *struct {
-		PortfolioScore  float64 `json:"portfolioScore"`
-		PortfolioRating string  `json:"portfolioRating"`
-		TotalResults    int     `json:"totalResults"`
+		PortfolioScore                                   float64 `json:"portfolioScore"`
+		PortfolioRating                                  string  `json:"portfolioRating"`
+		TotalResults                                     int     `json:"totalResults"`
+		TotalResultsBelowThresholdScore                  *int    `json:"totalResultsBelowThresholdScore"`
+		TotalResultsWithFindingsAtLeastThresholdSeverity *int    `json:"totalResultsWithFindingsAtLeastThresholdSeverity"`
 	} `json:"summaryInfo"`
 }
 
@@ -104,18 +106,20 @@ const (
 // without repeating page_size, matching the behavior of native upstream
 // cursors.
 type listAppsScanCursor struct {
-	Kind     string `json:"kind"`
-	Cursor   string `json:"cursor,omitempty"`
-	Consumed int    `json:"consumed,omitempty"`
-	Limit    int    `json:"limit"`
+	Kind          string `json:"kind"`
+	Cursor        string `json:"cursor,omitempty"`
+	Consumed      int    `json:"consumed,omitempty"`
+	Limit         int    `json:"limit"`
+	MatchedBefore *int   `json:"matched_before,omitempty"`
 }
 
-func encodeListAppsScanCursor(cursor string, consumed, limit int) string {
+func encodeListAppsScanCursor(cursor string, consumed, limit int, matchedBefore *int) string {
 	b, _ := json.Marshal(listAppsScanCursor{
-		Kind:     listAppsScanCursorKind,
-		Cursor:   cursor,
-		Consumed: consumed,
-		Limit:    limit,
+		Kind:          listAppsScanCursorKind,
+		Cursor:        cursor,
+		Consumed:      consumed,
+		Limit:         limit,
+		MatchedBefore: matchedBefore,
 	})
 	return base64.RawURLEncoding.EncodeToString(b)
 }
@@ -137,7 +141,8 @@ func decodeListAppsScanCursor(cursor string) (listAppsScanCursor, bool) {
 	}
 	var scan listAppsScanCursor
 	if err := json.Unmarshal(b, &scan); err != nil || scan.Kind != listAppsScanCursorKind ||
-		scan.Consumed < 0 || scan.Consumed > listAppsScanPageSize || scan.Limit < 1 {
+		scan.Consumed < 0 || scan.Consumed > listAppsScanPageSize || scan.Limit < 1 ||
+		(scan.MatchedBefore != nil && *scan.MatchedBefore < 0) {
 		return listAppsScanCursor{}, false
 	}
 	return scan, true
@@ -216,6 +221,9 @@ func (c *Client) ListApps(ctx context.Context, p ListAppsParams) (*AppPage, erro
 	if strings.TrimSpace(p.Search) != "" {
 		return c.searchApps(ctx, p)
 	}
+	if len(p.ApplicationRefs) > 0 || len(p.GroupRefs) > 0 {
+		return c.scanFilteredApps(ctx, p)
+	}
 
 	pageSize := p.PageSize
 	if pageSize == 0 {
@@ -258,9 +266,15 @@ func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPa
 	pageSize := p.PageSize
 	sourceCursor := p.Cursor
 	consumed := 0
+	matchedCount := 0
+	countStartedAtPortfolioBeginning := p.Cursor == ""
 	if scan, ok := decodeListAppsScanCursor(p.Cursor); ok {
 		sourceCursor = scan.Cursor
 		consumed = scan.Consumed
+		if scan.MatchedBefore != nil {
+			matchedCount = *scan.MatchedBefore
+			countStartedAtPortfolioBeginning = true
+		}
 		if pageSize == 0 {
 			pageSize = scan.Limit
 		}
@@ -287,6 +301,8 @@ func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPa
 	sourceParams.Cursor = ""
 
 	seenCursors := map[string]bool{}
+	totalKnown := false
+	pageFilled := false
 	for {
 		if seenCursors[sourceCursor] {
 			return nil, fmt.Errorf("list portfolio applications: upstream cursor repeated during filtered scan")
@@ -298,7 +314,6 @@ func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPa
 			return nil, err
 		}
 		if source.SummaryInfo != nil {
-			out.Total = source.SummaryInfo.TotalResults
 			if p.IncludeSummary {
 				out.Summary = source.summary()
 			}
@@ -311,9 +326,15 @@ func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPa
 		if p.ThresholdSeverity != "" {
 			severityParams := sourceParams
 			severityParams.ThresholdSeverity = p.ThresholdSeverity
-			filtered, err := c.listAppsRaw(ctx, severityParams, listAppsScanPageSize, sourceCursor, false)
+			wantSeverityTotal := canUseSingleThresholdTotal(p)
+			filtered, err := c.listAppsRaw(ctx, severityParams, listAppsScanPageSize, sourceCursor, wantSeverityTotal)
 			if err != nil {
 				return nil, err
+			}
+			if wantSeverityTotal && filtered.SummaryInfo != nil &&
+				filtered.SummaryInfo.TotalResultsWithFindingsAtLeastThresholdSeverity != nil {
+				out.Total = *filtered.SummaryInfo.TotalResultsWithFindingsAtLeastThresholdSeverity
+				totalKnown = true
 			}
 			severityRefs = make(map[string]bool, len(filtered.Rows))
 			for _, row := range filtered.Rows {
@@ -324,6 +345,10 @@ func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPa
 		for i := consumed; i < len(source.Rows); i++ {
 			row := source.Rows[i]
 			if !appMatchesListFilters(row, p, appRefs, groupRefs, severityRefs) {
+				continue
+			}
+			matchedCount++
+			if pageFilled {
 				continue
 			}
 			out.Apps = append(out.Apps, row.toApp())
@@ -339,14 +364,51 @@ func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPa
 						nextSourceCursor = source.PageInfo.Cursor
 						nextConsumed = 0
 					}
+					var matchedBefore *int
+					if countStartedAtPortfolioBeginning {
+						n := matchedCount
+						matchedBefore = &n
+					}
 					out.Page.HasNextPage = true
-					out.Page.NextCursor = encodeListAppsScanCursor(nextSourceCursor, nextConsumed, pageSize)
+					out.Page.NextCursor = encodeListAppsScanCursor(nextSourceCursor, nextConsumed, pageSize, matchedBefore)
 				}
-				return out, nil
+				pageFilled = true
+
+				// A lone severity threshold exposes its exact match total in
+				// the paired response. A lone score threshold exposes the
+				// corresponding exact counter through a cheap summary query.
+				// Both paths can stop as soon as the requested page is full.
+				if out.Page.HasNextPage && !totalKnown && canUseSingleThresholdTotal(p) && p.ThresholdScore != nil {
+					summaryParams := sourceParams
+					summaryParams.ThresholdScore = p.ThresholdScore
+					summary, err := c.listAppsRaw(ctx, summaryParams, 1, "", true)
+					if err != nil {
+						return nil, err
+					}
+					if summary.SummaryInfo != nil && summary.SummaryInfo.TotalResultsBelowThresholdScore != nil {
+						out.Total = *summary.SummaryInfo.TotalResultsBelowThresholdScore
+						totalKnown = true
+					}
+				}
+				if totalKnown {
+					return out, nil
+				}
 			}
 		}
 
 		if !source.PageInfo.HasNextPage {
+			if totalKnown {
+				return out, nil
+			}
+			if countStartedAtPortfolioBeginning {
+				out.Total = matchedCount
+			} else {
+				total, err := c.countFilteredApps(ctx, p)
+				if err != nil {
+					return nil, err
+				}
+				out.Total = total
+			}
 			return out, nil
 		}
 		if source.PageInfo.Cursor == "" {
@@ -354,6 +416,73 @@ func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPa
 		}
 		sourceCursor = source.PageInfo.Cursor
 		consumed = 0
+	}
+}
+
+// canUseSingleThresholdTotal reports whether upstream's summary counter is
+// exactly the same set the caller requested. The two threshold counters are
+// independent, so combinations (or additional local filters) still require a
+// complete scan to count the intersection.
+func canUseSingleThresholdTotal(p ListAppsParams) bool {
+	if strings.TrimSpace(p.Search) != "" || len(p.ApplicationRefs) > 0 || len(p.GroupRefs) > 0 {
+		return false
+	}
+	return (p.ThresholdScore != nil) != (p.ThresholdSeverity != "")
+}
+
+// countFilteredApps computes the global match count from the beginning of the
+// portfolio. New nsmcp scan cursors carry the number of matches consumed before
+// their source position, so this fallback is primarily for a native/legacy
+// upstream cursor that cannot provide that prefix count.
+func (c *Client) countFilteredApps(ctx context.Context, p ListAppsParams) (int, error) {
+	appRefs := stringSet(p.ApplicationRefs)
+	groupRefs := stringSet(p.GroupRefs)
+	sourceParams := p
+	sourceParams.ThresholdScore = nil
+	sourceParams.ThresholdSeverity = ""
+	sourceParams.ApplicationRefs = nil
+	sourceParams.GroupRefs = nil
+	sourceParams.Search = ""
+	sourceParams.Cursor = ""
+
+	total := 0
+	cursor := ""
+	seenCursors := map[string]bool{}
+	for {
+		if seenCursors[cursor] {
+			return 0, fmt.Errorf("list portfolio applications: upstream cursor repeated while counting filtered apps")
+		}
+		seenCursors[cursor] = true
+
+		source, err := c.listAppsRaw(ctx, sourceParams, listAppsScanPageSize, cursor, false)
+		if err != nil {
+			return 0, err
+		}
+		var severityRefs map[string]bool
+		if p.ThresholdSeverity != "" {
+			severityParams := sourceParams
+			severityParams.ThresholdSeverity = p.ThresholdSeverity
+			filtered, err := c.listAppsRaw(ctx, severityParams, listAppsScanPageSize, cursor, false)
+			if err != nil {
+				return 0, err
+			}
+			severityRefs = make(map[string]bool, len(filtered.Rows))
+			for _, row := range filtered.Rows {
+				severityRefs[row.Ref] = true
+			}
+		}
+		for _, row := range source.Rows {
+			if appMatchesListFilters(row, p, appRefs, groupRefs, severityRefs) {
+				total++
+			}
+		}
+		if !source.PageInfo.HasNextPage {
+			return total, nil
+		}
+		if source.PageInfo.Cursor == "" {
+			return 0, fmt.Errorf("list portfolio applications: upstream page has_next_page without a cursor")
+		}
+		cursor = source.PageInfo.Cursor
 	}
 }
 
@@ -389,48 +518,65 @@ func appMatchesListFilters(row rawAppRow, p ListAppsParams, appRefs, groupRefs, 
 	return true
 }
 
-// searchAppPages caps how many upstream pages a single search call walks; the
-// caller resumes from next_cursor when the window closes with pages remaining.
-const searchAppPages = 20
-
 // searchAppPageSize is the upstream page stride used while scanning for a
 // client-side match; it is the upstream page-size cap.
 const searchAppPageSize = 50
 
 // searchApps scans upstream pages for a case-insensitive substring match on
 // title or package, since the applications endpoint has no text filter. It
-// collects every match in the scan window (page_size does not bound matches
-// here) and, if it stopped with pages still outstanding, hands back the last
-// upstream cursor so a repeat call continues the walk.
+// collects every match (page_size does not bound matches here) and exhausts the
+// portfolio so Total is the exact global match count.
 func (c *Client) searchApps(ctx context.Context, p ListAppsParams) (*AppPage, error) {
-	needle := strings.ToLower(strings.TrimSpace(p.Search))
 	out := &AppPage{Apps: []App{}}
+	appRefs := stringSet(p.ApplicationRefs)
+	groupRefs := stringSet(p.GroupRefs)
+	sourceParams := p
+	sourceParams.ApplicationRefs = nil
+	sourceParams.GroupRefs = nil
+	sourceParams.Search = ""
+	sourceParams.Cursor = ""
+
 	cursor := p.Cursor
-	for range searchAppPages {
-		raw, err := c.listAppsRaw(ctx, p, searchAppPageSize, cursor, true)
+	countStartedAtPortfolioBeginning := cursor == ""
+	matchedCount := 0
+	seenCursors := map[string]bool{}
+	for {
+		if seenCursors[cursor] {
+			return nil, fmt.Errorf("list portfolio applications: upstream cursor repeated during search")
+		}
+		seenCursors[cursor] = true
+
+		raw, err := c.listAppsRaw(ctx, sourceParams, searchAppPageSize, cursor, true)
 		if err != nil {
 			return nil, err
 		}
 		if raw.SummaryInfo != nil {
-			out.Total = raw.SummaryInfo.TotalResults
 			if p.IncludeSummary {
 				out.Summary = raw.summary()
 			}
 		}
 		for _, r := range raw.Rows {
-			if strings.Contains(strings.ToLower(r.Title), needle) || strings.Contains(strings.ToLower(r.Package), needle) {
+			if appMatchesListFilters(r, p, appRefs, groupRefs, nil) {
 				out.Apps = append(out.Apps, r.toApp())
+				matchedCount++
 			}
 		}
 		if !raw.PageInfo.HasNextPage {
-			cursor = ""
 			break
+		}
+		if raw.PageInfo.Cursor == "" {
+			return nil, fmt.Errorf("list portfolio applications: upstream page has_next_page without a cursor")
 		}
 		cursor = raw.PageInfo.Cursor
 	}
-	if cursor != "" {
-		out.Page.HasNextPage = true
-		out.Page.NextCursor = cursor
+	if countStartedAtPortfolioBeginning {
+		out.Total = matchedCount
+	} else {
+		total, err := c.countFilteredApps(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		out.Total = total
 	}
 	return out, nil
 }
