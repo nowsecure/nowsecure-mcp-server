@@ -17,6 +17,7 @@ import (
 )
 
 func TestListApps_FiltersAndMapping(t *testing.T) {
+	var requests atomic.Int32
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Path; got != "/v2/portfolio/applications" {
 			t.Fatalf("path = %q", got)
@@ -24,20 +25,38 @@ func TestListApps_FiltersAndMapping(t *testing.T) {
 		if auth := r.Header.Get("Authorization"); auth != "Bearer test-token" {
 			t.Errorf("auth header = %q", auth)
 		}
-		// filters must be a JSON array with our two entries.
-		var f []map[string]any
-		if err := json.Unmarshal([]byte(r.URL.Query().Get("filters")), &f); err != nil {
-			t.Fatalf("filters not JSON: %v (%q)", err, r.URL.Query().Get("filters"))
-		}
-		if len(f) != 2 {
-			t.Errorf("expected 2 filters, got %d: %v", len(f), f)
+		if ps := r.URL.Query().Get("pageSize"); ps != "50" {
+			t.Errorf("pageSize = %q, want 50-row scan window", ps)
 		}
 		if r.URL.Query().Get("orderBy") != "-score" {
 			t.Errorf("orderBy = %q", r.URL.Query().Get("orderBy"))
 		}
+
+		var f []map[string]any
+		if encoded := r.URL.Query().Get("filters"); encoded != "" {
+			if err := json.Unmarshal([]byte(encoded), &f); err != nil {
+				t.Fatalf("filters not JSON: %v (%q)", err, encoded)
+			}
+		}
+		switch requests.Add(1) {
+		case 1:
+			// The source walk must keep threshold filters off the request so
+			// its cursor reflects the full sorted envelope.
+			if len(f) != 0 {
+				t.Errorf("source filters = %v, want none", f)
+			}
+		case 2:
+			// Severity cannot be inferred from score/rating, so it is queried
+			// over the same source window. Score is evaluated from the row.
+			if len(f) != 1 || f[0]["name"] != "thresholdSeverity" || f[0]["value"] != "high" {
+				t.Errorf("severity filters = %v, want thresholdSeverity=high only", f)
+			}
+		default:
+			t.Fatalf("unexpected request %d", requests.Load())
+		}
 		_, _ = w.Write([]byte(`{
 			"rows":[{"ref":"app-1","assessmentRef":"as-1","platform":"android","package":"com.x","title":"X","score":42.5,"rating":"poor","vulnerabilityCount":3,"group":{"ref":"g1","name":"Team A"}}],
-			"pageInfo":{"hasNextPage":true,"cursor":"CUR2"}
+			"pageInfo":{"hasNextPage":false}
 		}`))
 	})
 	score := 80.0
@@ -48,8 +67,11 @@ func TestListApps_FiltersAndMapping(t *testing.T) {
 	if len(got.Apps) != 1 || got.Apps[0].AppRef != "app-1" || got.Apps[0].Group != "Team A" {
 		t.Fatalf("unexpected apps: %+v", got.Apps)
 	}
-	if !got.Page.HasNextPage || got.Page.NextCursor != "CUR2" {
+	if got.Page.HasNextPage || got.Page.NextCursor != "" {
 		t.Errorf("pagination = %+v", got.Page)
+	}
+	if requests.Load() != 2 {
+		t.Errorf("requests = %d, want source + severity", requests.Load())
 	}
 }
 
@@ -201,6 +223,147 @@ func TestListApps_ThresholdSeverityValidatedClientSide(t *testing.T) {
 	_, err := c.ListApps(t.Context(), ListAppsParams{ThresholdSeverity: "sev1"})
 	if err == nil || !strings.Contains(err.Error(), `invalid threshold_severity "sev1" (allowed: critical, high, medium, low)`) {
 		t.Errorf("got %v, want client-side allowed-values error", err)
+	}
+}
+
+func TestListApps_ThresholdFilterScansUpstreamEnvelope(t *testing.T) {
+	var requests atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if ps := r.URL.Query().Get("pageSize"); ps != "50" {
+			t.Errorf("scan pageSize = %q, want 50", ps)
+		}
+		severity := strings.Contains(r.URL.Query().Get("filters"), `"thresholdSeverity"`)
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			if severity {
+				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false,"cursor":null}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"best-1","title":"Best One","score":99},
+					{"ref":"best-2","title":"Best Two","score":98}
+				],"pageInfo":{"hasNextPage":true,"cursor":"C2"},"summaryInfo":{"totalResults":11}}`))
+			}
+		case "C2":
+			if severity {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"uber","title":"Uber Driver","score":48}
+				],"pageInfo":{"hasNextPage":false,"cursor":null}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"uber","title":"Uber Driver","score":48},
+					{"ref":"other-1","title":"Other One","score":47}
+				],"pageInfo":{"hasNextPage":true,"cursor":"C4"},"summaryInfo":{"totalResults":11}}`))
+			}
+		case "C4":
+			if severity {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"nyseg","title":"NYSEG","score":44.6}
+				],"pageInfo":{"hasNextPage":false,"cursor":null}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"nyseg","title":"NYSEG","score":44.6},
+					{"ref":"other-2","title":"Other Two","score":44.5}
+				],"pageInfo":{"hasNextPage":true,"cursor":"C6"},"summaryInfo":{"totalResults":11}}`))
+			}
+		case "C6":
+			if severity {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"bh","title":"B&H Photo","score":44}
+				],"pageInfo":{"hasNextPage":false,"cursor":null}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"rows":[
+					{"ref":"bh","title":"B&H Photo","score":44}
+				],"pageInfo":{"hasNextPage":false,"cursor":null},"summaryInfo":{"totalResults":11}}`))
+			}
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	})
+
+	first, err := c.ListApps(t.Context(), ListAppsParams{
+		ThresholdSeverity: "high",
+		OrderBy:           "-score",
+		PageSize:          2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Apps) != 2 {
+		t.Fatalf("first page apps = %+v, want two matches", first.Apps)
+	}
+	if got := []string{first.Apps[0].Title, first.Apps[1].Title}; fmt.Sprint(got) != "[Uber Driver NYSEG]" {
+		t.Fatalf("first page titles = %v, want Uber Driver and NYSEG", got)
+	}
+	if first.Total != 11 {
+		t.Errorf("first total = %d, want upstream portfolio total 11 on issue-1 branch", first.Total)
+	}
+	if !first.Page.HasNextPage || first.Page.NextCursor == "" {
+		t.Fatalf("first page envelope = %+v, want resumable upstream envelope", first.Page)
+	}
+	if first.Page.NextCursor == "C4" || first.Page.NextCursor == "C6" {
+		t.Errorf("next_cursor = %q, want an nsmcp cursor preserving the partial source window", first.Page.NextCursor)
+	}
+
+	second, err := c.ListApps(t.Context(), ListAppsParams{
+		ThresholdSeverity: "high",
+		OrderBy:           "-score",
+		Cursor:            first.Page.NextCursor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Apps) != 1 || second.Apps[0].Title != "B&H Photo" {
+		t.Fatalf("second page apps = %+v, want B&H Photo only", second.Apps)
+	}
+	if second.Page.HasNextPage {
+		t.Errorf("second page envelope = %+v, want exhausted", second.Page)
+	}
+	if requests.Load() != 10 {
+		t.Errorf("upstream requests = %d, want five source/severity window pairs across both calls", requests.Load())
+	}
+}
+
+func TestListApps_ThresholdScoreScansAndFiltersRowsLocally(t *testing.T) {
+	var requests atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if filters := r.URL.Query().Get("filters"); filters != "" {
+			t.Errorf("source request filters = %q, want threshold_score evaluated from rows", filters)
+		}
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			_, _ = w.Write([]byte(`{"rows":[
+				{"ref":"best-1","title":"Best One","score":90},
+				{"ref":"best-2","title":"Best Two","score":80}
+			],"pageInfo":{"hasNextPage":true,"cursor":"C2"},"summaryInfo":{"totalResults":4}}`))
+		case "C2":
+			_, _ = w.Write([]byte(`{"rows":[
+				{"ref":"risk-1","title":"Risk One","score":60},
+				{"ref":"risk-2","title":"Risk Two","score":55}
+			],"pageInfo":{"hasNextPage":false,"cursor":null},"summaryInfo":{"totalResults":4}}`))
+		default:
+			t.Fatalf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+		}
+	})
+
+	score := 60.0
+	got, err := c.ListApps(t.Context(), ListAppsParams{
+		ThresholdScore: &score,
+		OrderBy:        "-score",
+		PageSize:       2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Apps) != 2 || got.Apps[0].Title != "Risk One" || got.Apps[1].Title != "Risk Two" {
+		t.Fatalf("apps = %+v, want both score <= 60 rows in source order", got.Apps)
+	}
+	if got.Page.HasNextPage {
+		t.Errorf("page = %+v, want exhausted", got.Page)
+	}
+	if requests.Load() != 2 {
+		t.Errorf("requests = %d, want two source windows and no threshold-score request", requests.Load())
 	}
 }
 

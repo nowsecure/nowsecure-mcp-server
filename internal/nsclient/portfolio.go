@@ -2,6 +2,8 @@ package nsclient
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -82,6 +84,65 @@ type rawCursorPage struct {
 	Cursor      string `json:"cursor"`
 }
 
+const (
+	// The applications endpoint caps pages at 50 rows. Filtered scans use the
+	// largest window so a sparse threshold does not turn into one request per
+	// requested result.
+	listAppsScanPageSize = 50
+
+	listAppsScanCursorKind = "nsmcp-list-apps-scan-v1"
+)
+
+// listAppsScanCursor resumes a filtered walk inside an upstream page. The
+// thresholdSeverity filter is evaluated by the applications endpoint after it
+// takes the sorted page window, so a filtered request can discard the
+// upstream cursor. We therefore walk an unfiltered shadow page for its
+// envelope and, when the requested result page fills partway through that
+// window, remember how many source rows were already consumed.
+//
+// Limit preserves the result-page size when a caller follows next_cursor
+// without repeating page_size, matching the behavior of native upstream
+// cursors.
+type listAppsScanCursor struct {
+	Kind     string `json:"kind"`
+	Cursor   string `json:"cursor,omitempty"`
+	Consumed int    `json:"consumed,omitempty"`
+	Limit    int    `json:"limit"`
+}
+
+func encodeListAppsScanCursor(cursor string, consumed, limit int) string {
+	b, _ := json.Marshal(listAppsScanCursor{
+		Kind:     listAppsScanCursorKind,
+		Cursor:   cursor,
+		Consumed: consumed,
+		Limit:    limit,
+	})
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func decodeListAppsScanCursor(cursor string) (listAppsScanCursor, bool) {
+	if cursor == "" {
+		return listAppsScanCursor{}, false
+	}
+	var b []byte
+	for _, enc := range []*base64.Encoding{base64.RawURLEncoding, base64.URLEncoding, base64.RawStdEncoding, base64.StdEncoding} {
+		decoded, err := enc.DecodeString(cursor)
+		if err == nil {
+			b = decoded
+			break
+		}
+	}
+	if b == nil {
+		return listAppsScanCursor{}, false
+	}
+	var scan listAppsScanCursor
+	if err := json.Unmarshal(b, &scan); err != nil || scan.Kind != listAppsScanCursorKind ||
+		scan.Consumed < 0 || scan.Consumed > listAppsScanPageSize || scan.Limit < 1 {
+		return listAppsScanCursor{}, false
+	}
+	return scan, true
+}
+
 // listAppsRaw performs one GET against the applications endpoint with an
 // explicit page size and cursor, leaving the filter shaping to p. includeSummary
 // requests the summaryInfo block (portfolio score/rating and the row total); the
@@ -149,6 +210,9 @@ func (c *Client) ListApps(ctx context.Context, p ListAppsParams) (*AppPage, erro
 		}
 		p.ThresholdSeverity = sev[0]
 	}
+	if p.ThresholdScore != nil || p.ThresholdSeverity != "" {
+		return c.scanFilteredApps(ctx, p)
+	}
 	if strings.TrimSpace(p.Search) != "" {
 		return c.searchApps(ctx, p)
 	}
@@ -178,6 +242,151 @@ func (c *Client) ListApps(ctx context.Context, p ListAppsParams) (*AppPage, erro
 		out.Apps = append(out.Apps, r.toApp())
 	}
 	return out, nil
+}
+
+// scanFilteredApps works around the applications endpoint's filter/pagination
+// order. In particular, thresholdSeverity is applied to only the sorted source
+// window and pageInfo is then computed from the surviving rows. A sparse
+// filtered window can consequently claim the portfolio is exhausted.
+//
+// The unfiltered request is the source of truth for ordered rows and its
+// cursor envelope. threshold_score is evaluated directly against those rows.
+// Severity is not present on an application row (and rating is not an
+// equivalent), so a second request applies thresholdSeverity to the identical
+// source window and supplies the matching app refs.
+func (c *Client) scanFilteredApps(ctx context.Context, p ListAppsParams) (*AppPage, error) {
+	pageSize := p.PageSize
+	sourceCursor := p.Cursor
+	consumed := 0
+	if scan, ok := decodeListAppsScanCursor(p.Cursor); ok {
+		sourceCursor = scan.Cursor
+		consumed = scan.Consumed
+		if pageSize == 0 {
+			pageSize = scan.Limit
+		}
+	} else if pageSize == 0 {
+		pageSize = pageSizeFromCursor(p.Cursor)
+	}
+	if pageSize == 0 || pageSize > listAppsScanPageSize {
+		pageSize = listAppsScanPageSize
+	}
+
+	out := &AppPage{Apps: make([]App, 0, pageSize)}
+	appRefs := stringSet(p.ApplicationRefs)
+	groupRefs := stringSet(p.GroupRefs)
+
+	// Walk the whole portfolio envelope. App/group filters are cheap to apply
+	// from rawAppRow and keeping them off the shadow request ensures they cannot
+	// suppress the cursor in the same way as a threshold filter.
+	sourceParams := p
+	sourceParams.ThresholdScore = nil
+	sourceParams.ThresholdSeverity = ""
+	sourceParams.ApplicationRefs = nil
+	sourceParams.GroupRefs = nil
+	sourceParams.Search = ""
+	sourceParams.Cursor = ""
+
+	seenCursors := map[string]bool{}
+	for {
+		if seenCursors[sourceCursor] {
+			return nil, fmt.Errorf("list portfolio applications: upstream cursor repeated during filtered scan")
+		}
+		seenCursors[sourceCursor] = true
+
+		source, err := c.listAppsRaw(ctx, sourceParams, listAppsScanPageSize, sourceCursor, true)
+		if err != nil {
+			return nil, err
+		}
+		if source.SummaryInfo != nil {
+			out.Total = source.SummaryInfo.TotalResults
+			if p.IncludeSummary {
+				out.Summary = source.summary()
+			}
+		}
+		if consumed > len(source.Rows) {
+			return nil, fmt.Errorf("list portfolio applications: filtered cursor consumed %d rows from a %d-row upstream page", consumed, len(source.Rows))
+		}
+
+		var severityRefs map[string]bool
+		if p.ThresholdSeverity != "" {
+			severityParams := sourceParams
+			severityParams.ThresholdSeverity = p.ThresholdSeverity
+			filtered, err := c.listAppsRaw(ctx, severityParams, listAppsScanPageSize, sourceCursor, false)
+			if err != nil {
+				return nil, err
+			}
+			severityRefs = make(map[string]bool, len(filtered.Rows))
+			for _, row := range filtered.Rows {
+				severityRefs[row.Ref] = true
+			}
+		}
+
+		for i := consumed; i < len(source.Rows); i++ {
+			row := source.Rows[i]
+			if !appMatchesListFilters(row, p, appRefs, groupRefs, severityRefs) {
+				continue
+			}
+			out.Apps = append(out.Apps, row.toApp())
+			if len(out.Apps) == pageSize {
+				nextConsumed := i + 1
+				hasMoreSource := nextConsumed < len(source.Rows) || source.PageInfo.HasNextPage
+				if hasMoreSource {
+					nextSourceCursor := sourceCursor
+					if nextConsumed == len(source.Rows) {
+						if source.PageInfo.Cursor == "" {
+							return nil, fmt.Errorf("list portfolio applications: upstream page has_next_page without a cursor")
+						}
+						nextSourceCursor = source.PageInfo.Cursor
+						nextConsumed = 0
+					}
+					out.Page.HasNextPage = true
+					out.Page.NextCursor = encodeListAppsScanCursor(nextSourceCursor, nextConsumed, pageSize)
+				}
+				return out, nil
+			}
+		}
+
+		if !source.PageInfo.HasNextPage {
+			return out, nil
+		}
+		if source.PageInfo.Cursor == "" {
+			return nil, fmt.Errorf("list portfolio applications: upstream page has_next_page without a cursor")
+		}
+		sourceCursor = source.PageInfo.Cursor
+		consumed = 0
+	}
+}
+
+func stringSet(values []string) map[string]bool {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(values))
+	for _, value := range values {
+		set[value] = true
+	}
+	return set
+}
+
+func appMatchesListFilters(row rawAppRow, p ListAppsParams, appRefs, groupRefs, severityRefs map[string]bool) bool {
+	if appRefs != nil && !appRefs[row.Ref] {
+		return false
+	}
+	if groupRefs != nil && !groupRefs[row.Group.Ref] {
+		return false
+	}
+	if p.ThresholdScore != nil && (row.Score == nil || *row.Score > *p.ThresholdScore) {
+		return false
+	}
+	if severityRefs != nil && !severityRefs[row.Ref] {
+		return false
+	}
+	if needle := strings.ToLower(strings.TrimSpace(p.Search)); needle != "" &&
+		!strings.Contains(strings.ToLower(row.Title), needle) &&
+		!strings.Contains(strings.ToLower(row.Package), needle) {
+		return false
+	}
+	return true
 }
 
 // searchAppPages caps how many upstream pages a single search call walks; the
