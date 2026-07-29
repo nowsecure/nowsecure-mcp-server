@@ -3,9 +3,9 @@
 //
 // Usage:
 //
-//	nsmcp [flags]                  # run the MCP server over stdio (default)
-//	nsmcp [flags] serve            # same as above
-//	nsmcp [flags] serve --http :8080 --public-url ... --oauth-audience ...
+//	nsmcp --platform [flags]       # run Platform MCP over stdio (default command)
+//	nsmcp --mari [flags] serve     # run MARI MCP over stdio
+//	nsmcp --platform [flags] serve --http :8080 --public-url ... --oauth-audience ...
 //	                               # remote OAuth 2.1 resource-server mode
 //	nsmcp [flags] login            # OAuth device-flow login (mints + stores a token)
 //	nsmcp [flags] logout           # revoke and forget the stored token
@@ -18,8 +18,8 @@
 //	--token     NowSecure API token (else $NOWSECURE_API_TOKEN and fallbacks,
 //	            else the credential stored by `nsmcp login`)
 //	--base-url  API base URL (default https://api.nowsecure.com)
-//	--platform  expose DevSecOps/Platform tools (default true)
-//	--mari      expose MARI/Risk-Intelligence tools (default true)
+//	--platform  expose DevSecOps/Platform tools (choose exactly one product)
+//	--mari      expose MARI/Risk-Intelligence tools (mutually exclusive)
 //
 // The command tree itself lives in internal/cli; this package only stamps the
 // version and executes it.

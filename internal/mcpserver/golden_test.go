@@ -36,8 +36,9 @@ type toolSnapshot struct {
 	Annotations  any    `json:"annotations,omitempty"`
 }
 
-// TestToolSchemasGolden builds the server exactly as production does (both
-// tool groups enabled) and compares every registered tool's {name,
+// TestToolSchemasGolden builds each of the two valid production server modes,
+// unions their tools (the shared URL decoder is de-duplicated), and compares
+// every registered tool's {name,
 // description, inputSchema, outputSchema, annotations} byte-for-byte against
 // testdata/tools.golden.json.
 //
@@ -49,27 +50,28 @@ type toolSnapshot struct {
 //
 //	go test ./internal/mcpserver/... -run TestToolSchemasGolden -update
 func TestToolSchemasGolden(t *testing.T) {
-	cfg := &config.Config{
-		Token:          "test-token",
-		BaseURL:        backendURL(t, nil),
-		EnablePlatform: true,
-		EnableMARI:     true,
+	byName := make(map[string]toolSnapshot)
+	for _, cfg := range []*config.Config{
+		{Token: "test-token", BaseURL: backendURL(t, nil), EnablePlatform: true},
+		{Token: "test-token", BaseURL: backendURL(t, nil), EnableMARI: true},
+	} {
+		res, err := session(t, cfg).ListTools(t.Context(), nil)
+		if err != nil {
+			t.Fatalf("ListTools: %v", err)
+		}
+		for _, tool := range res.Tools {
+			byName[tool.Name] = toolSnapshot{
+				Name:         tool.Name,
+				Description:  tool.Description,
+				InputSchema:  tool.InputSchema,
+				OutputSchema: tool.OutputSchema,
+				Annotations:  tool.Annotations,
+			}
+		}
 	}
-	cs := session(t, cfg)
-	res, err := cs.ListTools(t.Context(), nil)
-	if err != nil {
-		t.Fatalf("ListTools: %v", err)
-	}
-
-	snaps := make([]toolSnapshot, 0, len(res.Tools))
-	for _, tool := range res.Tools {
-		snaps = append(snaps, toolSnapshot{
-			Name:         tool.Name,
-			Description:  tool.Description,
-			InputSchema:  tool.InputSchema,
-			OutputSchema: tool.OutputSchema,
-			Annotations:  tool.Annotations,
-		})
+	snaps := make([]toolSnapshot, 0, len(byName))
+	for _, snap := range byName {
+		snaps = append(snaps, snap)
 	}
 	// ListTools order reflects registration order, not a documented contract;
 	// sort by name so the golden file doesn't churn if registration order

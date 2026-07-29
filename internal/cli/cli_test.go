@@ -61,7 +61,7 @@ func TestServeFlagsAfterSubcommand(t *testing.T) {
 	clearTokenEnv(t)
 
 	// No --token, token env cleared: resolution fails on the missing token.
-	_, _, _, err := runCLI(t, "serve", "--platform=false", "--mari=false")
+	_, _, _, err := runCLI(t, "serve", "--platform")
 	if err == nil {
 		t.Fatal("expected an error when no token is available")
 	}
@@ -69,15 +69,15 @@ func TestServeFlagsAfterSubcommand(t *testing.T) {
 		t.Fatalf("expected missing-token error, got: %v", err)
 	}
 
-	// Same invocation but with --token after the subcommand: the token check now
-	// passes, so resolution advances to the tool-groups check. A different error
-	// proves --token reached the command.
-	root, _, _, err := runCLI(t, "serve", "--token", "dummy", "--platform=false", "--mari=false")
+	// With --token after the subcommand, the token check passes. Selecting both
+	// products then gives a different, deterministic error before the serve loop,
+	// proving --token reached the command.
+	root, _, _, err := runCLI(t, "serve", "--token", "dummy", "--platform", "--mari")
 	if err == nil {
-		t.Fatal("expected an error when both tool groups are disabled")
+		t.Fatal("expected an error when both products are selected")
 	}
-	if !strings.Contains(err.Error(), "no tool groups enabled") {
-		t.Fatalf("expected tool-groups error (proving --token was parsed), got: %v", err)
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected product-selection error (proving --token was parsed), got: %v", err)
 	}
 	if got := root.PersistentFlags().Lookup("token").Value.String(); got != "dummy" {
 		t.Fatalf("--token after subcommand not bound: got %q, want %q", got, "dummy")
@@ -85,17 +85,31 @@ func TestServeFlagsAfterSubcommand(t *testing.T) {
 }
 
 // TestNoArgsDispatchesToServe verifies that running nsmcp with no subcommand
-// takes the serve path. With the token env cleared it fails fast in
+// takes the serve path. With no product selected it fails fast in
 // config.Resolve (the serve path's error) rather than blocking on stdin.
 func TestNoArgsDispatchesToServe(t *testing.T) {
 	clearTokenEnv(t)
 
 	_, _, _, err := runCLI(t)
 	if err == nil {
-		t.Fatal("expected serve path to fail fast with no token")
+		t.Fatal("expected serve path to fail fast with no product")
 	}
-	if !strings.Contains(err.Error(), "no API token found") {
+	if !strings.Contains(err.Error(), "choose exactly one product") {
 		t.Fatalf("expected the serve config error, got: %v", err)
+	}
+}
+
+func TestServeRequiresExactlyOneProduct(t *testing.T) {
+	clearTokenEnv(t)
+
+	_, _, _, err := runCLI(t, "serve", "--token", "dummy")
+	if err == nil || !strings.Contains(err.Error(), "choose exactly one product") {
+		t.Fatalf("no product error = %v, want choose-exactly-one guidance", err)
+	}
+
+	_, _, _, err = runCLI(t, "serve", "--token", "dummy", "--platform", "--mari")
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("both products error = %v, want mutual-exclusion guidance", err)
 	}
 }
 

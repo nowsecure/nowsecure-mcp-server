@@ -13,16 +13,24 @@ import (
 	"nsmcp/internal/mcpserver"
 )
 
-// newToolSession builds the MCP server exactly as serve does (both tool
-// groups enabled) and connects an in-memory client to it. Commands built on
+// newToolSession builds the MCP server exactly as serve does (using the
+// selected product) and connects an in-memory client to it. Commands built on
 // it exercise the full path agents see — handlers, output shaping, schema
 // validation, dual emission — unlike the raw REST probes, which drive
 // nsclient directly. tokenOptional permits token-less sessions for
 // operations that never reach the API (tool listing, schemas).
 func newToolSession(ctx context.Context, opts *rootOptions, tokenOptional bool) (*mcp.ClientSession, error) {
+	return newToolSessionForProduct(ctx, opts, tokenOptional, opts.platform, opts.mari)
+}
+
+// newToolSessionForProduct is used by the whole-surface budget audit to open
+// one valid session per product without pretending a production server can
+// expose both at once.
+func newToolSessionForProduct(ctx context.Context, opts *rootOptions, tokenOptional, platform, mari bool) (*mcp.ClientSession, error) {
 	cfg, err := config.Resolve(config.Inputs{
 		Token: opts.token, BaseURL: opts.baseURL,
-		Platform: true, MARI: true,
+		Platform:      platform,
+		MARI:          mari,
 		TokenOptional: tokenOptional,
 		StoredToken:   storedTokenFn,
 	})
@@ -58,13 +66,13 @@ With no arguments, lists the registered tools. Arguments are passed as one
 JSON object. Use --schema to print a tool's input schema instead of calling
 it (tool listing and --schema need no API token).`,
 		Example: `  # what tools exist?
-  nsmcp profile call
+  nsmcp profile call --platform
 
   # how do I call one?
-  nsmcp profile call get_mari_assessment --schema
+  nsmcp profile call get_mari_assessment --schema --mari
 
   # call it exactly as an agent would
-  nsmcp profile call get_mari_assessment '{"assessment_ref":"<ref>","min_severity":"high"}'`,
+  nsmcp profile call get_mari_assessment '{"assessment_ref":"<ref>","min_severity":"high"}' --mari`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

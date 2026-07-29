@@ -115,7 +115,8 @@ func newWhoamiCmd(opts *rootOptions) *cobra.Command {
 			// Same resolution the server uses: flag > env > login store.
 			cfg, err := config.Resolve(config.Inputs{
 				Token: opts.token, BaseURL: opts.baseURL,
-				Platform: true, MARI: true,
+				// whoami resolves credentials but exposes no MCP surface.
+				Platform:    true,
 				StoredToken: storedTokenFn,
 			})
 			if err != nil {

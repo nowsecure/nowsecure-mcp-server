@@ -69,6 +69,20 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 	return names
 }
 
+func promptNames(t *testing.T, cs *mcp.ClientSession) []string {
+	t.Helper()
+	res, err := cs.ListPrompts(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("ListPrompts: %v", err)
+	}
+	names := make([]string, 0, len(res.Prompts))
+	for _, p := range res.Prompts {
+		names = append(names, p.Name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // structured re-marshals the tool result's structured content and decodes it
 // into a generic map, so tests inspect the exact JSON shape the server emitted.
 func structured(t *testing.T, res *mcp.CallToolResult) map[string]any {
@@ -140,17 +154,6 @@ func TestToolRegistrationGating(t *testing.T) {
 			mari: true,
 			want: []string{"decode_nowsecure_url", "list_mari_apps", "get_mari_assessment"},
 		},
-		{
-			name:     "both",
-			platform: true,
-			mari:     true,
-			want: []string{
-				"decode_nowsecure_url",
-				"list_apps", "list_assessments", "get_assessment_findings",
-				"get_finding", "search_findings", "get_apps_affected_by_finding",
-				"list_mari_apps", "get_mari_assessment",
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -168,56 +171,129 @@ func TestToolRegistrationGating(t *testing.T) {
 	}
 }
 
-func TestToolAnnotations(t *testing.T) {
-	cfg := &config.Config{
-		Token:          "test-token",
-		BaseURL:        backendURL(t, nil),
-		EnablePlatform: true,
-		EnableMARI:     true,
-	}
-	cs := session(t, cfg)
-	res, err := cs.ListTools(t.Context(), nil)
-	if err != nil {
-		t.Fatalf("ListTools: %v", err)
-	}
-	if want := 1 + platformTools + mariTools; len(res.Tools) != want {
-		t.Fatalf("tool count = %d, want %d", len(res.Tools), want)
-	}
-	for _, tool := range res.Tools {
-		if tool.Annotations == nil {
-			t.Errorf("%s: Annotations is nil", tool.Name)
-			continue
-		}
-		if !tool.Annotations.ReadOnlyHint {
-			t.Errorf("%s: ReadOnlyHint = false, want true", tool.Name)
-		}
-		if tool.Name == "decode_nowsecure_url" {
-			if tool.Annotations.OpenWorldHint == nil {
-				t.Errorf("%s: OpenWorldHint is nil, want false", tool.Name)
-			} else if *tool.Annotations.OpenWorldHint {
-				t.Errorf("%s: OpenWorldHint = true, want false", tool.Name)
-			}
+func TestProductSelectionValidation(t *testing.T) {
+	for _, cfg := range []*config.Config{
+		{Token: "test-token", BaseURL: backendURL(t, nil)},
+		{Token: "test-token", BaseURL: backendURL(t, nil), EnablePlatform: true, EnableMARI: true},
+	} {
+		if _, err := mcpserver.New(cfg, "test"); err == nil {
+			t.Fatalf("mcpserver.New(%+v) succeeded, want product-selection error", cfg)
 		}
 	}
 }
 
+func TestToolAnnotations(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		cfg  *config.Config
+		want int
+	}{
+		{"platform", &config.Config{Token: "test-token", BaseURL: backendURL(t, nil), EnablePlatform: true}, 1 + platformTools},
+		{"mari", &config.Config{Token: "test-token", BaseURL: backendURL(t, nil), EnableMARI: true}, 1 + mariTools},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := session(t, tt.cfg).ListTools(t.Context(), nil)
+			if err != nil {
+				t.Fatalf("ListTools: %v", err)
+			}
+			if len(res.Tools) != tt.want {
+				t.Fatalf("tool count = %d, want %d", len(res.Tools), tt.want)
+			}
+			for _, tool := range res.Tools {
+				if tool.Annotations == nil {
+					t.Errorf("%s: Annotations is nil", tool.Name)
+					continue
+				}
+				if !tool.Annotations.ReadOnlyHint {
+					t.Errorf("%s: ReadOnlyHint = false, want true", tool.Name)
+				}
+				if tool.Name == "decode_nowsecure_url" {
+					if tool.Annotations.OpenWorldHint == nil {
+						t.Errorf("%s: OpenWorldHint is nil, want false", tool.Name)
+					} else if *tool.Annotations.OpenWorldHint {
+						t.Errorf("%s: OpenWorldHint = true, want false", tool.Name)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestServerInstructions(t *testing.T) {
-	cfg := &config.Config{
-		Token:          "test-token",
-		BaseURL:        backendURL(t, nil),
-		EnablePlatform: true,
-		EnableMARI:     true,
+	tests := []struct {
+		name                   string
+		cfg                    *config.Config
+		want, avoid, wantTitle string
+	}{
+		{"platform", &config.Config{Token: "test-token", BaseURL: backendURL(t, nil), EnablePlatform: true}, "list_apps", "list_mari_apps", "NowSecure Platform"},
+		{"mari", &config.Config{Token: "test-token", BaseURL: backendURL(t, nil), EnableMARI: true}, "list_mari_apps", "list_apps", "NowSecure MARI"},
 	}
-	cs := session(t, cfg)
-	init := cs.InitializeResult()
-	if init == nil { //nolint:staticcheck // SA5011 false positive: t.Fatal below halts the test
-		t.Fatal("InitializeResult is nil")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			init := session(t, tt.cfg).InitializeResult()
+			if init == nil { //nolint:staticcheck // SA5011 false positive: t.Fatal below halts the test
+				t.Fatal("InitializeResult is nil")
+			}
+			if strings.TrimSpace(init.Instructions) == "" { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
+				t.Fatal("Instructions is empty")
+			}
+			if !strings.Contains(init.Instructions, tt.want) { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
+				t.Errorf("Instructions does not mention %s: %q", tt.want, init.Instructions)
+			}
+			if strings.Contains(init.Instructions, tt.avoid) { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
+				t.Errorf("Instructions unexpectedly mention %s: %q", tt.avoid, init.Instructions)
+			}
+			if init.ServerInfo == nil || init.ServerInfo.Title != tt.wantTitle { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
+				t.Errorf("server title = %v, want %q", init.ServerInfo, tt.wantTitle)
+			}
+		})
 	}
-	if strings.TrimSpace(init.Instructions) == "" { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
-		t.Fatal("Instructions is empty")
+}
+
+func TestPromptRegistrationGating(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want []string
+	}{
+		{
+			"platform",
+			&config.Config{Token: "test-token", BaseURL: backendURL(t, nil), EnablePlatform: true},
+			[]string{"platform_investigate_finding", "platform_review_app", "platform_triage_portfolio"},
+		},
+		{
+			"mari",
+			&config.Config{Token: "test-token", BaseURL: backendURL(t, nil), EnableMARI: true},
+			[]string{"mari_compare_apps", "mari_review_app", "mari_triage_catalog"},
+		},
 	}
-	if !strings.Contains(init.Instructions, "list_apps") { //nolint:staticcheck // SA5011 false positive: t.Fatal above halts the test
-		t.Errorf("Instructions does not mention list_apps: %q", init.Instructions)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := promptNames(t, session(t, tt.cfg)); !sameSet(got, tt.want) {
+				t.Errorf("prompt set mismatch\n got  %v\n want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPromptRendersArgument(t *testing.T) {
+	cfg := &config.Config{Token: "test-token", BaseURL: backendURL(t, nil), EnableMARI: true}
+	res, err := session(t, cfg).GetPrompt(t.Context(), &mcp.GetPromptParams{
+		Name:      "mari_review_app",
+		Arguments: map[string]string{"app": "Example Wallet"},
+	})
+	if err != nil {
+		t.Fatalf("GetPrompt: %v", err)
+	}
+	if len(res.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(res.Messages))
+	}
+	content, ok := res.Messages[0].Content.(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content type = %T, want *mcp.TextContent", res.Messages[0].Content)
+	}
+	if !strings.Contains(content.Text, "Example Wallet") || !strings.Contains(content.Text, "MARI") {
+		t.Errorf("prompt text = %q, want rendered app and product", content.Text)
 	}
 }
 
