@@ -91,6 +91,9 @@ func ServeHTTP(ctx context.Context, cfg *config.Config, version string, opts HTT
 // metadata) for the resource-server mode. Split from ServeHTTP so the wiring
 // can be exercised in tests without binding a socket.
 func newHTTPHandler(ctx context.Context, cfg *config.Config, version string, opts HTTPOptions) (http.Handler, error) {
+	if err := config.ValidateProductSelection(cfg.EnablePlatform, cfg.EnableMARI); err != nil {
+		return nil, err
+	}
 	if opts.Addr == "" || opts.PublicURL == "" || opts.Issuer == "" || opts.Audience == "" || opts.PlatformAudience == "" {
 		return nil, fmt.Errorf("http mode requires Addr, PublicURL, Issuer, Audience, and PlatformAudience")
 	}
@@ -147,7 +150,7 @@ func newHTTPHandler(ctx context.Context, cfg *config.Config, version string, opt
 		Resource:               publicURL,
 		AuthorizationServers:   []string{opts.Issuer},
 		BearerMethodsSupported: []string{"header"},
-		ResourceName:           "NowSecure Platform & MARI",
+		ResourceName:           productTitle(cfg),
 	})
 
 	mux := http.NewServeMux()

@@ -54,13 +54,14 @@ func NewRootCmd(build BuildInfo) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "nsmcp",
-		Short: "MCP server for the NowSecure Platform & MARI",
+		Short: "MCP server for NowSecure Platform or MARI",
 		Long: `nsmcp is a Model Context Protocol (MCP) server for the NowSecure Platform
 (DevSecOps mobile app security) and MARI (Mobile App Risk Intelligence).
 
 Running nsmcp with no subcommand starts the MCP server over stdio (identical to
-"nsmcp serve"). The profile subcommands call the REST API directly and are handy
-for verifying endpoint shapes against a live tenant.
+"nsmcp serve"). Choose exactly one product surface with --platform or --mari;
+the flags are mutually exclusive. The profile subcommands call the REST API
+directly and are handy for verifying endpoint shapes against a live tenant.
 
 Environment:
   NOWSECURE_API_TOKEN        API token (fallbacks: NOWSECURE_API_KEY, NS_API_TOKEN,
@@ -91,8 +92,8 @@ https://app.nowsecure.com/account/tokens.`,
 	pf := root.PersistentFlags()
 	pf.StringVar(&opts.token, "token", "", "NowSecure API token (default: $NOWSECURE_API_TOKEN)")
 	pf.StringVar(&opts.baseURL, "base-url", "", "API base URL (default: https://api.nowsecure.com)")
-	pf.BoolVar(&opts.platform, "platform", true, "expose DevSecOps/Platform tools")
-	pf.BoolVar(&opts.mari, "mari", true, "expose MARI/Risk-Intelligence tools")
+	pf.BoolVar(&opts.platform, "platform", false, "serve DevSecOps/Platform (required unless --mari)")
+	pf.BoolVar(&opts.mari, "mari", false, "serve MARI/Risk Intelligence (required unless --platform)")
 
 	root.AddCommand(newServeCmd(opts), newProfileCmd(opts), newVersionCmd(build),
 		newLoginCmd(opts), newLogoutCmd(opts), newWhoamiCmd(opts))

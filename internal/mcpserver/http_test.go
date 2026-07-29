@@ -240,7 +240,7 @@ func TestHTTP_NoTokenChallenges(t *testing.T) {
 
 func TestHTTP_ValidTokenInitialize(t *testing.T) {
 	fi := newFakeIssuer(t)
-	cfg := &config.Config{Token: "unused", BaseURL: "https://api.invalid", EnablePlatform: true, EnableMARI: true}
+	cfg := &config.Config{Token: "unused", BaseURL: "https://api.invalid", EnablePlatform: true}
 	opts := passthroughOpts(fi)
 	ts := serveHandler(t, opts, cfg)
 

@@ -158,8 +158,19 @@ func TestResolve_ValidateBaseURL(t *testing.T) {
 func TestResolve_NoToolGroups(t *testing.T) {
 	clearTokenEnv(t)
 	_, err := Resolve(Inputs{Token: "tok", BaseURL: "https://api.example.com"})
-	if err == nil || !strings.Contains(err.Error(), "tool groups") {
-		t.Fatalf("error = %v, want a mention of tool groups", err)
+	if err == nil || !strings.Contains(err.Error(), "choose exactly one product") {
+		t.Fatalf("error = %v, want a product-selection error", err)
+	}
+}
+
+func TestResolve_ProductsAreMutuallyExclusive(t *testing.T) {
+	clearTokenEnv(t)
+	_, err := Resolve(Inputs{
+		Token: "tok", BaseURL: "https://api.example.com",
+		Platform: true, MARI: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("error = %v, want a mutual-exclusion error", err)
 	}
 }
 
@@ -194,7 +205,7 @@ func TestResolve_StoredTokenFallback(t *testing.T) {
 
 func TestResolve_TokenOptional(t *testing.T) {
 	// HTTP mode: no token from any source is fine, but base-URL and tool-group
-	// validation still apply.
+	// validation still applies.
 	clearTokenEnv(t)
 	c, err := Resolve(Inputs{Platform: true, TokenOptional: true})
 	if err != nil {
@@ -204,6 +215,6 @@ func TestResolve_TokenOptional(t *testing.T) {
 		t.Errorf("Token = %q, want empty", c.Token)
 	}
 	if _, err := Resolve(Inputs{TokenOptional: true}); err == nil {
-		t.Error("want a tool-groups error even when the token is optional")
+		t.Error("want a product-selection error even when the token is optional")
 	}
 }

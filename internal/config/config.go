@@ -1,7 +1,7 @@
 // Package config resolves runtime configuration from flags and environment.
 //
-// Keep it deliberately small: an API token, a base URL, and which tool groups
-// to expose. Token *acquisition* (the `nsmcp login` OAuth flow, keychain
+// Keep it deliberately small: an API token, a base URL, and which product
+// surface to expose. Token *acquisition* (the `nsmcp login` OAuth flow, keychain
 // storage) lives in internal/nsauth; this package only consumes a stored token
 // through the StoredToken hook so it stays free of that dependency.
 package config
@@ -59,6 +59,9 @@ type Inputs struct {
 // Resolve merges flag values with environment fallbacks (flag wins) and
 // validates the result.
 func Resolve(in Inputs) (*Config, error) {
+	if err := ValidateProductSelection(in.Platform, in.MARI); err != nil {
+		return nil, err
+	}
 	baseURL, err := ResolveBaseURL(in.BaseURL)
 	if err != nil {
 		return nil, err
@@ -77,10 +80,21 @@ func Resolve(in Inputs) (*Config, error) {
 		return nil, fmt.Errorf("no API token found: run `nsmcp login`, set NOWSECURE_API_TOKEN, or pass --token. " +
 			"Tokens can also be minted at https://app.nowsecure.com/account/tokens")
 	}
-	if !c.EnablePlatform && !c.EnableMARI {
-		return nil, fmt.Errorf("no tool groups enabled: enable at least one of --platform or --mari")
-	}
 	return c, nil
+}
+
+// ValidateProductSelection enforces the one-server/one-product invariant.
+// Keeping it exported lets server constructors reject invalid Config values
+// assembled directly rather than through Resolve.
+func ValidateProductSelection(platform, mari bool) error {
+	switch {
+	case platform && mari:
+		return fmt.Errorf("--platform and --mari are mutually exclusive; choose exactly one")
+	case !platform && !mari:
+		return fmt.Errorf("choose exactly one product: pass either --platform or --mari")
+	default:
+		return nil
+	}
 }
 
 // ResolveBaseURL resolves the API base URL from the flag value, the

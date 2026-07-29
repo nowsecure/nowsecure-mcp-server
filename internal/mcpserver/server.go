@@ -34,10 +34,13 @@ func (s *srv) api(ctx context.Context) (*nsclient.Client, error) {
 	return s.resolve(ctx)
 }
 
-// New builds an MCP server with the tool groups enabled in cfg, served over a
+// New builds an MCP server for the single product selected in cfg, served over a
 // single static bearer token (the stdio path). Behavior is unchanged from a
 // plain one-client server: resolve always returns that static client.
 func New(cfg *config.Config, version string) (*mcp.Server, error) {
+	if err := config.ValidateProductSelection(cfg.EnablePlatform, cfg.EnableMARI); err != nil {
+		return nil, err
+	}
 	logger, err := newToolLogger()
 	if err != nil {
 		return nil, err
@@ -58,7 +61,7 @@ func (s *srv) newServer(cfg *config.Config, version string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "nsmcp",
 		Version: version,
-		Title:   "NowSecure Platform & MARI",
+		Title:   productTitle(cfg),
 	}, &mcp.ServerOptions{
 		Instructions: instructions(cfg),
 	})
@@ -78,9 +81,11 @@ func (s *srv) newServer(cfg *config.Config, version string) *mcp.Server {
 
 	if cfg.EnablePlatform {
 		s.registerPlatformTools(server)
+		registerPlatformPrompts(server)
 	}
 	if cfg.EnableMARI {
 		s.registerMARITools(server)
+		registerMARIPrompts(server)
 	}
 	return server
 }
@@ -116,10 +121,14 @@ func Serve(ctx context.Context, server *mcp.Server) error {
 // initialize time, covering the workflows that span multiple tools.
 func instructions(cfg *config.Config) string {
 	var b strings.Builder
-	b.WriteString("Read-only tools for the NowSecure Platform (mobile app security scans) and MARI (third-party app risk intelligence).\n")
+	if cfg.EnablePlatform {
+		b.WriteString("Read-only tools for NowSecure Platform mobile app security scans.\n")
+	} else {
+		b.WriteString("Read-only tools for NowSecure MARI third-party app risk intelligence.\n")
+	}
 	b.WriteString("The list tools default their text block to a compact table; pass format:\"json\" for the full JSON there instead, and structuredContent always carries the canonical JSON.\n")
 	if cfg.EnablePlatform {
-		b.WriteString("Portfolio triage: start with list_apps to get app_ref values, then get_assessment_findings. list_apps search is the front door for the MARI↔Platform (package, platform) join. " +
+		b.WriteString("Portfolio triage: start with list_apps to get app_ref values, then get_assessment_findings. " +
 			"The portfolio is a rolling 12-month window: list_apps, get_apps_affected_by_finding, and get_finding's application_count cover only apps with a completed scan in the last 12 months — apps last scanned earlier are absent entirely (never assume the portfolio is the whole tenant), and get_assessment_findings fails 'not found in portfolio' for them; list_assessments is NOT windowed and still serves their older history. " +
 			"Omitting assessment_ref uses the assessment the app's portfolio row points at (its latest known scan) — that can lag a scan that just finished, so check the returned status/created_at or pass an explicit ref from list_assessments. " +
 			"get_assessment_findings rows omit recommendation prose by default (pull it back with check_ids or include_recommendations); its default also omits artifact-inventory rows (counts.artifacts still counts them, include_artifacts=true restores them), and min_severity=low is the scored-vulnerability triage view. " +
@@ -132,11 +141,15 @@ func instructions(cfg *config.Config) string {
 		b.WriteString("Third-party vetting: list_mari_apps to find the app and its assessment_ref, then get_mari_assessment. Its default is a compact risk card (scores, per-category breakdown, severity counts) with no finding rows — pull rows with min_severity or limit, per-finding deep-dive prose with check_ids, and expand sections only when needed (they are heavy). " +
 			"MARI risk_score is 0-100 where HIGHER is worse — the opposite polarity of Platform scores.\n")
 	}
-	if cfg.EnablePlatform && cfg.EnableMARI {
-		b.WriteString("Platform and MARI are separate catalogs; correlate an app across them by matching (package, platform) — titles differ between the catalogs.\n")
-	}
 	b.WriteString("If an operator pastes a NowSecure console URL, decode_nowsecure_url turns it into ids for the other tools.")
 	return b.String()
+}
+
+func productTitle(cfg *config.Config) string {
+	if cfg.EnablePlatform {
+		return "NowSecure Platform"
+	}
+	return "NowSecure MARI"
 }
 
 // readOnlyAPI marks a tool as a read-only, idempotent GET against the

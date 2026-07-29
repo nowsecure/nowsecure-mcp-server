@@ -58,11 +58,10 @@ var defaultBudgets = map[string]int{
 	"get_mari_assessment.expand_libraries":     10_000,
 }
 
-// newProfileBudgetCmd is the CI guard: it runs a fixed suite of tool calls —
-// every tool's default plus the known-heavy option paths — through the
-// in-process MCP session, measures each result's size, and fails when a case
-// exceeds its byte budget. Refs (an app, a finding, a MARI assessment) are
-// discovered from the tenant, so the suite needs only a token.
+// newProfileBudgetCmd is the CI guard: it runs a fixed suite across both
+// products — every tool's default plus the known-heavy option paths — through
+// one valid in-process session per product, combines the measurements, and
+// fails when a case exceeds its byte budget.
 func newProfileBudgetCmd(opts *rootOptions) *cobra.Command {
 	var (
 		budgetsFile string
@@ -72,18 +71,18 @@ func newProfileBudgetCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "budget",
 		Short: "Measure tool response sizes against byte budgets (CI guard)",
-		Long: `Run every MCP tool (defaults plus the known-heavy option paths) through an
-in-process MCP session and measure what an agent would receive: text-block
-bytes, structuredContent bytes, and their total. Each case has a byte budget;
-any case over budget (or erroring) fails the command with a non-zero exit, so
-CI catches changes that bloat tool output before agents pay for them.
+		Long: `Run every MCP tool across Platform and MARI (defaults plus the known-heavy
+option paths) through separate, product-valid in-process MCP sessions and
+measure what an agent would receive: text-block bytes, structuredContent
+bytes, and their total. Each case has a byte budget; any case over budget (or
+erroring) fails the command with a non-zero exit, so CI catches changes that
+bloat tool output before agents pay for them.
 
 Budgets are built in (calibrated ~2x against the reference tenant) and guard
 order-of-magnitude regressions, not exact sizes — tenant data drifts. Override
 any case with a --budgets JSON file of {"case_name": max_total_bytes}.
-Refs the suite needs (an app, a finding key, a MARI assessment) are
-discovered from the tenant at the start of the run; cases whose ref cannot be
-discovered are reported as skipped, not failed.`,
+Refs the suite needs are discovered from the tenant at the start of the run;
+cases whose ref cannot be discovered are reported as skipped, not failed.`,
 		Example: `  # run the suite (CI: non-zero exit on breach)
   nsmcp profile budget
 
@@ -106,16 +105,25 @@ discovered are reported as skipped, not failed.`,
 				}, budgets))
 			}
 			ctx := cmd.Context()
-			cs, err := newToolSession(ctx, opts, false)
+			platformSession, err := newToolSessionForProduct(ctx, opts, false, true, false)
 			if err != nil {
 				return err
 			}
-			defer func() { _ = cs.Close() }()
+			defer func() { _ = platformSession.Close() }()
+			mariSession, err := newToolSessionForProduct(ctx, opts, false, false, true)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = mariSession.Close() }()
 
-			refs := discoverRefs(ctx, cs)
+			refs := discoverRefs(ctx, platformSession, mariSession)
 			rows := make([]budgetRow, 0, len(defaultBudgets))
 			over := 0
 			for _, c := range budgetSuite(refs, budgets) {
+				cs := platformSession
+				if isMARITool(c.Tool) {
+					cs = mariSession
+				}
 				row := runBudgetCase(ctx, cs, c)
 				if row.Status == "over" || row.Status == "error" {
 					over++
@@ -158,24 +166,23 @@ type discoveredRefs struct {
 	MARIAssessmentRef string
 }
 
-// discoverRefs pulls one app, one finding key, and one MARI assessment ref
-// from the tenant. Failures leave fields empty — the dependent cases report
-// as skipped so a Platform-only or MARI-only tenant can still run the suite.
-func discoverRefs(ctx context.Context, cs *mcp.ClientSession) discoveredRefs {
+// discoverRefs pulls each reference through the product session that exposes
+// its discovery tool.
+func discoverRefs(ctx context.Context, platformSession, mariSession *mcp.ClientSession) discoveredRefs {
 	var refs discoveredRefs
-	if m := callStructured(ctx, cs, "list_apps", map[string]any{"page_size": 1}); m != nil {
+	if m := callStructured(ctx, platformSession, "list_apps", map[string]any{"page_size": 1}); m != nil {
 		if apps, _ := m["apps"].([]any); len(apps) > 0 {
 			row, _ := apps[0].(map[string]any)
 			refs.AppRef, _ = row["app_ref"].(string)
 		}
 	}
-	if m := callStructured(ctx, cs, "search_findings", map[string]any{"query": "ssl", "limit": 1}); m != nil {
+	if m := callStructured(ctx, platformSession, "search_findings", map[string]any{"query": "ssl", "limit": 1}); m != nil {
 		if rows, _ := m["findings"].([]any); len(rows) > 0 {
 			row, _ := rows[0].(map[string]any)
 			refs.FindingKey, _ = row["key"].(string)
 		}
 	}
-	if m := callStructured(ctx, cs, "list_mari_apps", map[string]any{"page_size": 1}); m != nil {
+	if m := callStructured(ctx, mariSession, "list_mari_apps", map[string]any{"page_size": 1}); m != nil {
 		if apps, _ := m["apps"].([]any); len(apps) > 0 {
 			row, _ := apps[0].(map[string]any)
 			refs.MARIAssessmentRef, _ = row["assessment_ref"].(string)
@@ -229,6 +236,10 @@ func budgetSuite(refs discoveredRefs, budgets map[string]int) []budgetCase {
 		cases[i].Budget = budgets[cases[i].Name]
 	}
 	return cases
+}
+
+func isMARITool(name string) bool {
+	return name == "list_mari_apps" || name == "get_mari_assessment"
 }
 
 // runBudgetCase executes one case and measures the result. A case whose args

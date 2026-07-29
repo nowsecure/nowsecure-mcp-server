@@ -14,8 +14,8 @@ import (
 
 // newProfileCmd builds the "profile" command tree. It lets an operator verify
 // endpoint shapes live with a real token; output is pretty JSON to stdout.
-// Profile always resolves config with both tool groups enabled — it drives the
-// REST client directly and ignores --platform/--mari.
+// The raw profile probes drive the REST client directly and do not expose an
+// MCP product surface, so they ignore --platform/--mari.
 func newProfileCmd(opts *rootOptions) *cobra.Command {
 	profile := &cobra.Command{
 		Use:   "profile",
@@ -224,12 +224,13 @@ The optional second argument opts into heavier sections, comma-separated:
 	return cmd
 }
 
-// newProfileClient resolves config (both tool groups on, matching the old
-// profile behavior) and returns a REST client.
+// newProfileClient resolves credentials and returns a REST client. Platform is
+// selected only to satisfy Config's one-product invariant; raw profile probes
+// do not register or gate MCP features.
 func newProfileClient(opts *rootOptions) (*nsclient.Client, error) {
 	cfg, err := config.Resolve(config.Inputs{
 		Token: opts.token, BaseURL: opts.baseURL,
-		Platform: true, MARI: true,
+		Platform:    true,
 		StoredToken: storedTokenFn,
 	})
 	if err != nil {
