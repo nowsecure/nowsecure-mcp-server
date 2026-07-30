@@ -8,7 +8,17 @@ A small **Model Context Protocol (MCP) server** for two NowSecure products —
 AI assistant a focused set of read-only tools for each — see
 [Supported products and tools](#supported-products-and-tools).
 
-nsmcp runs **locally** as a CLI process.
+## Install
+
+### Claude Desktop: MCPB bundle (fastest)
+
+1. Download the `.mcpb` asset from the
+   [latest release](https://github.com/nowsecure/nowsecure-mcp-server/releases/latest).
+2. Open it in Claude Desktop and follow the guided setup.
+
+That's it—the bundle includes nsmcp and configures it for you. There is no
+separate binary to install and no JSON to edit. It supports macOS (Apple
+silicon and Intel) and Windows x64.
 
 ## Supported products and tools
 
