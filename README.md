@@ -20,124 +20,6 @@ That's it—the bundle includes nsmcp and configures it for you. There is no
 separate binary to install and no JSON to edit. It supports macOS (Apple
 silicon and Intel) and Windows x64.
 
-## Supported products and tools
-
-Each server process exposes exactly one product. Choose it explicitly with
-`--product platform` or `--product mari`; the flag is required. To use both
-products in one MCP client, configure two nsmcp server entries with different
-names and product values.
-
-### NowSecure Platform (`--product platform`)
-
-Triage your own mobile app portfolio: scores, findings, fleet-wide impact, and
-remediation guidance.
-
-The portfolio covers a rolling 12-month window: apps without a completed scan
-in the last 12 months are absent from `list_apps` and
-`get_apps_affected_by_finding` entirely. `list_assessments` is not windowed
-and still serves their older scan history.
-
-| Tool | Description |
-| --- | --- |
-| `list_apps` | List portfolio apps with their latest security score, rating, and open vulnerability count. The starting point for DevSecOps triage. |
-| `list_assessments` | Scan history of one app, newest first, with score, rating, status, and finding counts by severity. |
-| `get_assessment_findings` | Findings for one assessment as a compact, triage-ready list, sorted most-severe first. |
-| `get_finding` | Documentation for a single finding: description, steps to reproduce, testing method, and remediation guidance. |
-| `search_findings` | Free-text search over the finding catalog (key, title, description, category) — returns finding keys when you only know a topic or risk. |
-| `get_apps_affected_by_finding` | Fleet-wide impact: which portfolio apps' latest assessments are affected by a given finding. |
-
-### NowSecure MARI (`--product mari`)
-
-Vet vendor and third-party apps you didn't build, by risk score, letter
-rating, and findings.
-
-| Tool | Description |
-| --- | --- |
-| `list_mari_apps` | List third-party apps in your MARI catalog with risk score, letter rating (A–F), and risk category (LOW/MEDIUM/HIGH). |
-| `get_mari_assessment` | Risk profile for one third-party app: score, rating, findings summary, and opt-in deep-dive sections (permissions, tracking domains, libraries/SDKs, AI usage, …). |
-
-## Suggested prompts
-
-Clients that support MCP prompts can show these workflow starters directly in
-their prompt picker. Each product mode advertises only its own prompts.
-
-### Platform prompts
-
-| Prompt | Purpose |
-| --- | --- |
-| `platform_triage_portfolio` | Prioritize the riskiest first-party apps and their remediation work. |
-| `platform_review_app` | Review the latest scan and affected findings for an app title, package, ref, or URL. |
-| `platform_investigate_finding` | Find fleet-wide impact and remediation guidance for a finding key, topic, or URL. |
-
-### MARI prompts
-
-| Prompt | Purpose |
-| --- | --- |
-| `mari_triage_catalog` | Prioritize third-party apps that need vendor-risk review. |
-| `mari_review_app` | Review one third-party app's MARI risk profile. |
-| `mari_compare_apps` | Compare two or more third-party apps and recommend the safer choice. |
-
-## Security
-
-Connecting an AI assistant to your NowSecure data creates powerful workflows
-but also structural risks. Any MCP client or server you enable (IDE plugins,
-desktop apps, other MCP servers running alongside nsmcp) can cause an AI agent
-to act on your behalf with your credentials.
-
-Large language models are vulnerable to
-[prompt injection](https://owasp.org/www-community/attacks/PromptInjection)
-and related attacks (indirect prompt injection,
-[tool poisoning](https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks)).
-Anything the model reads can carry instructions that steer the agent to
-exfiltrate data or take unintended actions you never asked for — and some of
-what nsmcp returns originates in third-party apps (titles, metadata, finding
-details), so treat it as untrusted content, not just results. nsmcp's tools
-are currently all read-only, which limits what an agent can change through
-this server — but review the tools your client actually lists rather than
-relying on this document: the tool set will evolve, and other NowSecure MCP
-servers may expose read-write tools. The vulnerability data nsmcp returns is
-sensitive regardless, and a compromised agent could leak it through *other*
-tools it has access to (file writes, web requests, messaging).
-
-To reduce risk:
-
-- Only use trusted MCP clients, and review which other MCP servers and tools
-  are enabled alongside nsmcp.
-- Apply least privilege: use short-lived, scoped tokens and revoke ones you
-  no longer use at <https://app.nowsecure.com/account/tokens>.
-- Run only the product you need (`--product platform` or `--product mari`).
-- Require human confirmation for high-impact actions an agent takes in the
-  same session it reads nsmcp data.
-
-## Quick start
-
-1. Download a binary for your platform from the
-   [releases page](https://github.com/nowsecure/nowsecure-mcp-server/releases),
-   or build from source (see [Build & run](#build--run)):
-
-   ```bash
-   git clone git@github.com:nowsecure/nowsecure-mcp-server.git && cd nowsecure-mcp-server
-   make build   # -> ./nsmcp
-   ```
-
-   Put `./nsmcp` on your `PATH`, or use an absolute path in client configs below.
-
-   > **macOS:** release binaries are unsigned; if Gatekeeper blocks a
-   > downloaded binary, clear the quarantine flag:
-   > `xattr -d com.apple.quarantine ./nsmcp`
-
-2. Get credentials:
-
-   - **Static token (works today):** mint one at
-     <https://app.nowsecure.com/account/tokens> and set `NOWSECURE_API_TOKEN`.
-   - **`nsmcp login` (coming soon):** OAuth device-code login — not usable
-     until the dedicated Auth0 CLI client is provisioned; see
-     [Log in with your NowSecure account](#log-in-with-your-nowsecure-account).
-
-3. Choose a product: use `--product platform` for your own mobile app portfolio
-   or `--product mari` for third-party app risk intelligence. Then configure
-   your client from the list below.
-
 ## One-click Platform install
 
 Pick your client below — each button uses the client's native install link to
@@ -368,6 +250,125 @@ uses `context_servers`, not `mcpServers`:
 ```
 
 </details>
+
+
+## Supported products and tools
+
+Each server process exposes exactly one product. Choose it explicitly with
+`--product platform` or `--product mari`; the flag is required. To use both
+products in one MCP client, configure two nsmcp server entries with different
+names and product values.
+
+### NowSecure Platform (`--product platform`)
+
+Triage your own mobile app portfolio: scores, findings, fleet-wide impact, and
+remediation guidance.
+
+The portfolio covers a rolling 12-month window: apps without a completed scan
+in the last 12 months are absent from `list_apps` and
+`get_apps_affected_by_finding` entirely. `list_assessments` is not windowed
+and still serves their older scan history.
+
+| Tool | Description |
+| --- | --- |
+| `list_apps` | List portfolio apps with their latest security score, rating, and open vulnerability count. The starting point for DevSecOps triage. |
+| `list_assessments` | Scan history of one app, newest first, with score, rating, status, and finding counts by severity. |
+| `get_assessment_findings` | Findings for one assessment as a compact, triage-ready list, sorted most-severe first. |
+| `get_finding` | Documentation for a single finding: description, steps to reproduce, testing method, and remediation guidance. |
+| `search_findings` | Free-text search over the finding catalog (key, title, description, category) — returns finding keys when you only know a topic or risk. |
+| `get_apps_affected_by_finding` | Fleet-wide impact: which portfolio apps' latest assessments are affected by a given finding. |
+
+### NowSecure MARI (`--product mari`)
+
+Vet vendor and third-party apps you didn't build, by risk score, letter
+rating, and findings.
+
+| Tool | Description |
+| --- | --- |
+| `list_mari_apps` | List third-party apps in your MARI catalog with risk score, letter rating (A–F), and risk category (LOW/MEDIUM/HIGH). |
+| `get_mari_assessment` | Risk profile for one third-party app: score, rating, findings summary, and opt-in deep-dive sections (permissions, tracking domains, libraries/SDKs, AI usage, …). |
+
+## Suggested prompts
+
+Clients that support MCP prompts can show these workflow starters directly in
+their prompt picker. Each product mode advertises only its own prompts.
+
+### Platform prompts
+
+| Prompt | Purpose |
+| --- | --- |
+| `platform_triage_portfolio` | Prioritize the riskiest first-party apps and their remediation work. |
+| `platform_review_app` | Review the latest scan and affected findings for an app title, package, ref, or URL. |
+| `platform_investigate_finding` | Find fleet-wide impact and remediation guidance for a finding key, topic, or URL. |
+
+### MARI prompts
+
+| Prompt | Purpose |
+| --- | --- |
+| `mari_triage_catalog` | Prioritize third-party apps that need vendor-risk review. |
+| `mari_review_app` | Review one third-party app's MARI risk profile. |
+| `mari_compare_apps` | Compare two or more third-party apps and recommend the safer choice. |
+
+## Security
+
+Connecting an AI assistant to your NowSecure data creates powerful workflows
+but also structural risks. Any MCP client or server you enable (IDE plugins,
+desktop apps, other MCP servers running alongside nsmcp) can cause an AI agent
+to act on your behalf with your credentials.
+
+Large language models are vulnerable to
+[prompt injection](https://owasp.org/www-community/attacks/PromptInjection)
+and related attacks (indirect prompt injection,
+[tool poisoning](https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks)).
+Anything the model reads can carry instructions that steer the agent to
+exfiltrate data or take unintended actions you never asked for — and some of
+what nsmcp returns originates in third-party apps (titles, metadata, finding
+details), so treat it as untrusted content, not just results. nsmcp's tools
+are currently all read-only, which limits what an agent can change through
+this server — but review the tools your client actually lists rather than
+relying on this document: the tool set will evolve, and other NowSecure MCP
+servers may expose read-write tools. The vulnerability data nsmcp returns is
+sensitive regardless, and a compromised agent could leak it through *other*
+tools it has access to (file writes, web requests, messaging).
+
+To reduce risk:
+
+- Only use trusted MCP clients, and review which other MCP servers and tools
+  are enabled alongside nsmcp.
+- Apply least privilege: use short-lived, scoped tokens and revoke ones you
+  no longer use at <https://app.nowsecure.com/account/tokens>.
+- Run only the product you need (`--product platform` or `--product mari`).
+- Require human confirmation for high-impact actions an agent takes in the
+  same session it reads nsmcp data.
+
+## Quick start
+
+1. Download a binary for your platform from the
+   [releases page](https://github.com/nowsecure/nowsecure-mcp-server/releases),
+   or build from source (see [Build & run](#build--run)):
+
+   ```bash
+   git clone git@github.com:nowsecure/nowsecure-mcp-server.git && cd nowsecure-mcp-server
+   make build   # -> ./nsmcp
+   ```
+
+   Put `./nsmcp` on your `PATH`, or use an absolute path in client configs below.
+
+   > **macOS:** release binaries are unsigned; if Gatekeeper blocks a
+   > downloaded binary, clear the quarantine flag:
+   > `xattr -d com.apple.quarantine ./nsmcp`
+
+2. Get credentials:
+
+   - **Static token (works today):** mint one at
+     <https://app.nowsecure.com/account/tokens> and set `NOWSECURE_API_TOKEN`.
+   - **`nsmcp login` (coming soon):** OAuth device-code login — not usable
+     until the dedicated Auth0 CLI client is provisioned; see
+     [Log in with your NowSecure account](#log-in-with-your-nowsecure-account).
+
+3. Choose a product: use `--product platform` for your own mobile app portfolio
+   or `--product mari` for third-party app risk intelligence. Then configure
+   your client from the list below.
 
 ## Configuration
 
