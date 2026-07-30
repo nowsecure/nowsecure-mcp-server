@@ -20,7 +20,11 @@ import (
 // nsclient directly. tokenOptional permits token-less sessions for
 // operations that never reach the API (tool listing, schemas).
 func newToolSession(ctx context.Context, opts *rootOptions, tokenOptional bool) (*mcp.ClientSession, error) {
-	return newToolSessionForProduct(ctx, opts, tokenOptional, opts.platform, opts.mari)
+	platform, mari, err := opts.selectedProducts()
+	if err != nil {
+		return nil, err
+	}
+	return newToolSessionForProduct(ctx, opts, tokenOptional, platform, mari)
 }
 
 // newToolSessionForProduct is used by the whole-surface budget audit to open
@@ -66,13 +70,13 @@ With no arguments, lists the registered tools. Arguments are passed as one
 JSON object. Use --schema to print a tool's input schema instead of calling
 it (tool listing and --schema need no API token).`,
 		Example: `  # what tools exist?
-  nsmcp profile call --platform
+  nsmcp profile call --product platform
 
   # how do I call one?
-  nsmcp profile call get_mari_assessment --schema --mari
+  nsmcp profile call get_mari_assessment --schema --product mari
 
   # call it exactly as an agent would
-  nsmcp profile call get_mari_assessment '{"assessment_ref":"<ref>","min_severity":"high"}' --mari`,
+  nsmcp profile call get_mari_assessment '{"assessment_ref":"<ref>","min_severity":"high"}' --product mari`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

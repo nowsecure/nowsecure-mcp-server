@@ -169,8 +169,8 @@ func TestResolve_ProductsAreMutuallyExclusive(t *testing.T) {
 		Token: "tok", BaseURL: "https://api.example.com",
 		Platform: true, MARI: true,
 	})
-	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Fatalf("error = %v, want a mutual-exclusion error", err)
+	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("error = %v, want an ambiguous-selection error", err)
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 // newProfileCmd builds the "profile" command tree. It lets an operator verify
 // endpoint shapes live with a real token; output is pretty JSON to stdout.
 // The raw profile probes drive the REST client directly and do not expose an
-// MCP product surface, so they ignore --platform/--mari.
+// MCP product surface, so they ignore --product.
 func newProfileCmd(opts *rootOptions) *cobra.Command {
 	profile := &cobra.Command{
 		Use:   "profile",

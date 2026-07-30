@@ -53,9 +53,13 @@ func runServe(cmd *cobra.Command, opts *rootOptions, so *serveOptions) error {
 	if so.httpAddr != "" {
 		return runServeHTTP(cmd, opts, so)
 	}
+	platform, mari, err := opts.selectedProducts()
+	if err != nil {
+		return err
+	}
 	cfg, err := config.Resolve(config.Inputs{
 		Token: opts.token, BaseURL: opts.baseURL,
-		Platform: opts.platform, MARI: opts.mari,
+		Platform: platform, MARI: mari,
 		StoredToken: storedTokenFn,
 	})
 	if err != nil {
@@ -99,9 +103,13 @@ func runServeHTTP(cmd *cobra.Command, opts *rootOptions, so *serveOptions) error
 	if so.oauthAudience == "" {
 		return errors.New("--oauth-audience is required with --http")
 	}
+	platform, mari, err := opts.selectedProducts()
+	if err != nil {
+		return err
+	}
 	cfg, err := config.Resolve(config.Inputs{
 		BaseURL:  opts.baseURL,
-		Platform: opts.platform, MARI: opts.mari,
+		Platform: platform, MARI: mari,
 		TokenOptional: true,
 	})
 	if err != nil {

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   goreleaser:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -21,6 +21,11 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Build MCPB artifacts
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          make mcpb VERSION="$version" MCPB_STAGE=.mcpb-dist/stage MCPB_FILE=".mcpb-dist/nsmcp_${version}.mcpb"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
