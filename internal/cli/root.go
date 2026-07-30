@@ -5,6 +5,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -36,11 +37,27 @@ func (b BuildInfo) String() string {
 // flags given after a subcommand (e.g. "serve --token X") update these same
 // fields.
 type rootOptions struct {
-	version  string
-	token    string
-	baseURL  string
-	platform bool
-	mari     bool
+	version string
+	token   string
+	baseURL string
+	product string
+}
+
+// selectedProducts resolves --product into the booleans consumed by the
+// existing config layer.
+func (o *rootOptions) selectedProducts() (platform, mari bool, err error) {
+	product := strings.ToLower(strings.TrimSpace(o.product))
+	if product == "" {
+		return false, false, nil
+	}
+	switch product {
+	case "platform":
+		return true, false, nil
+	case "mari":
+		return false, true, nil
+	default:
+		return false, false, fmt.Errorf("invalid --product %q: must be platform or mari", o.product)
+	}
 }
 
 // NewRootCmd builds the full command tree. main() executes it, and tests can
@@ -59,9 +76,9 @@ func NewRootCmd(build BuildInfo) *cobra.Command {
 (DevSecOps mobile app security) and MARI (Mobile App Risk Intelligence).
 
 Running nsmcp with no subcommand starts the MCP server over stdio (identical to
-"nsmcp serve"). Choose exactly one product surface with --platform or --mari;
-the flags are mutually exclusive. The profile subcommands call the REST API
-directly and are handy for verifying endpoint shapes against a live tenant.
+"nsmcp serve"). Choose exactly one product surface with --product
+platform|mari. The profile subcommands call the REST API directly and are handy
+for verifying endpoint shapes against a live tenant.
 
 Environment:
   NOWSECURE_API_TOKEN        API token (fallbacks: NOWSECURE_API_KEY, NS_API_TOKEN,
@@ -92,8 +109,7 @@ https://app.nowsecure.com/account/tokens.`,
 	pf := root.PersistentFlags()
 	pf.StringVar(&opts.token, "token", "", "NowSecure API token (default: $NOWSECURE_API_TOKEN)")
 	pf.StringVar(&opts.baseURL, "base-url", "", "API base URL (default: https://api.nowsecure.com)")
-	pf.BoolVar(&opts.platform, "platform", false, "serve DevSecOps/Platform (required unless --mari)")
-	pf.BoolVar(&opts.mari, "mari", false, "serve MARI/Risk Intelligence (required unless --platform)")
+	pf.StringVar(&opts.product, "product", "", "product to serve: platform or mari (required)")
 
 	root.AddCommand(newServeCmd(opts), newProfileCmd(opts), newVersionCmd(build),
 		newLoginCmd(opts), newLogoutCmd(opts), newWhoamiCmd(opts))

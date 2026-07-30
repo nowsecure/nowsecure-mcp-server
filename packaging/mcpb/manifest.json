@@ -1,0 +1,73 @@
+{
+  "manifest_version": "0.3",
+  "name": "nsmcp",
+  "display_name": "NowSecure",
+  "version": "0.1.0",
+  "description": "Review NowSecure Platform and MARI mobile app security data from your AI assistant.",
+  "long_description": "A read-only MCP server for NowSecure Platform and NowSecure MARI. Choose Platform to triage your own mobile app portfolio, assessments, and findings, or MARI to review the risk of vendor and third-party apps.",
+  "author": {
+    "name": "NowSecure",
+    "url": "https://www.nowsecure.com/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nowsecure/nowsecure-mcp-server.git"
+  },
+  "homepage": "https://github.com/nowsecure/nowsecure-mcp-server",
+  "documentation": "https://github.com/nowsecure/nowsecure-mcp-server#readme",
+  "support": "https://github.com/nowsecure/nowsecure-mcp-server/issues",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/nsmcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/nsmcp",
+      "args": [
+        "serve",
+        "--product",
+        "${user_config.product}"
+      ],
+      "env": {
+        "NOWSECURE_API_TOKEN": "${user_config.nowsecure_api_token}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/nsmcp.exe"
+        }
+      }
+    }
+  },
+  "tools_generated": true,
+  "prompts_generated": true,
+  "keywords": [
+    "nowsecure",
+    "mobile security",
+    "devsecops",
+    "risk intelligence",
+    "mari"
+  ],
+  "privacy_policies": [
+    "https://www.nowsecure.com/legal/privacy-notice/"
+  ],
+  "user_config": {
+    "product": {
+      "type": "string",
+      "title": "NowSecure product",
+      "description": "Product to expose: platform for your own app portfolio, or mari for third-party app risk intelligence.",
+      "default": "platform",
+      "required": true
+    },
+    "nowsecure_api_token": {
+      "type": "string",
+      "title": "NowSecure API token",
+      "description": "Create a token at https://app.nowsecure.com/admin/tokens.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32"
+    ]
+  }
+}

@@ -89,9 +89,9 @@ func Resolve(in Inputs) (*Config, error) {
 func ValidateProductSelection(platform, mari bool) error {
 	switch {
 	case platform && mari:
-		return fmt.Errorf("--platform and --mari are mutually exclusive; choose exactly one")
+		return fmt.Errorf("product selection is ambiguous: choose exactly one product")
 	case !platform && !mari:
-		return fmt.Errorf("choose exactly one product: pass either --platform or --mari")
+		return fmt.Errorf("choose exactly one product: pass --product platform or --product mari")
 	default:
 		return nil
 	}

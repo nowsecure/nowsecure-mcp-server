@@ -47,7 +47,7 @@ func stubBackend(t *testing.T) string {
 
 func TestProfileCallListsToolsWithoutToken(t *testing.T) {
 	clearTokenEnv(t)
-	_, out, _, err := runCLI(t, "profile", "call", "--platform")
+	_, out, _, err := runCLI(t, "profile", "call", "--product", "platform")
 	if err != nil {
 		t.Fatalf("profile call (list) should not need a token: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestProfileCallListsToolsWithoutToken(t *testing.T) {
 
 func TestProfileCallSchema(t *testing.T) {
 	clearTokenEnv(t)
-	_, out, _, err := runCLI(t, "profile", "call", "get_mari_assessment", "--schema", "--mari")
+	_, out, _, err := runCLI(t, "profile", "call", "get_mari_assessment", "--schema", "--product", "mari")
 	if err != nil {
 		t.Fatalf("--schema should not need a token: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestProfileCallSchema(t *testing.T) {
 			t.Errorf("schema missing option %s:\n%s", opt, out)
 		}
 	}
-	if _, _, _, err := runCLI(t, "profile", "call", "no_such_tool", "--schema", "--platform"); err == nil {
+	if _, _, _, err := runCLI(t, "profile", "call", "no_such_tool", "--schema", "--product", "platform"); err == nil {
 		t.Error("expected an error for an unknown tool")
 	}
 }
@@ -79,7 +79,7 @@ func TestProfileCallInvokesTool(t *testing.T) {
 	// decode_nowsecure_url is local, but invocation still goes through the
 	// full MCP session — the result is the exact CallTool payload.
 	_, out, _, err := runCLI(t, "profile", "call", "--token", "test-token",
-		"--platform", "decode_nowsecure_url", `{"url":"https://app.nowsecure.com/app/android/com.example.app/assessment/987654321/findings/apk_janus"}`)
+		"--product", "platform", "decode_nowsecure_url", `{"url":"https://app.nowsecure.com/app/android/com.example.app/assessment/987654321/findings/apk_janus"}`)
 	if err != nil {
 		t.Fatalf("call decode_nowsecure_url: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestProfileCallInvokesTool(t *testing.T) {
 		}
 	}
 	// Bad JSON args error before any call.
-	if _, _, _, err := runCLI(t, "profile", "call", "--token", "test-token", "--platform", "list_apps", "{oops"); err == nil {
+	if _, _, _, err := runCLI(t, "profile", "call", "--token", "test-token", "--product", "platform", "list_apps", "{oops"); err == nil {
 		t.Error("expected a json-args parse error")
 	}
 }

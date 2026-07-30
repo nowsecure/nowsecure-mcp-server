@@ -42,3 +42,23 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
+
+  mcpb:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build MCPB
+        run: make mcpb VERSION=0.0.0-test
+
+      - name: Verify MCPB
+        run: |
+          unzip -t dist/nsmcp.mcpb
+          cd dist
+          shasum -a 256 -c mcpb-checksums.txt

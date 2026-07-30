@@ -61,7 +61,7 @@ func TestServeFlagsAfterSubcommand(t *testing.T) {
 	clearTokenEnv(t)
 
 	// No --token, token env cleared: resolution fails on the missing token.
-	_, _, _, err := runCLI(t, "serve", "--platform")
+	_, _, _, err := runCLI(t, "serve", "--product", "platform")
 	if err == nil {
 		t.Fatal("expected an error when no token is available")
 	}
@@ -69,14 +69,14 @@ func TestServeFlagsAfterSubcommand(t *testing.T) {
 		t.Fatalf("expected missing-token error, got: %v", err)
 	}
 
-	// With --token after the subcommand, the token check passes. Selecting both
-	// products then gives a different, deterministic error before the serve loop,
+	// With --token after the subcommand, the token check passes. An invalid
+	// product then gives a different, deterministic error before the serve loop,
 	// proving --token reached the command.
-	root, _, _, err := runCLI(t, "serve", "--token", "dummy", "--platform", "--mari")
+	root, _, _, err := runCLI(t, "serve", "--token", "dummy", "--product", "other")
 	if err == nil {
-		t.Fatal("expected an error when both products are selected")
+		t.Fatal("expected an error when the product is invalid")
 	}
-	if !strings.Contains(err.Error(), "mutually exclusive") {
+	if !strings.Contains(err.Error(), "must be platform or mari") {
 		t.Fatalf("expected product-selection error (proving --token was parsed), got: %v", err)
 	}
 	if got := root.PersistentFlags().Lookup("token").Value.String(); got != "dummy" {
@@ -106,10 +106,28 @@ func TestServeRequiresExactlyOneProduct(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "choose exactly one product") {
 		t.Fatalf("no product error = %v, want choose-exactly-one guidance", err)
 	}
+}
 
-	_, _, _, err = runCLI(t, "serve", "--token", "dummy", "--platform", "--mari")
-	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Fatalf("both products error = %v, want mutual-exclusion guidance", err)
+func TestProductFlag(t *testing.T) {
+	clearTokenEnv(t)
+
+	// A valid product gets past product selection and reaches token
+	// resolution. This avoids entering the blocking serve loop.
+	_, _, _, err := runCLI(t, "serve", "--product", "platform")
+	if err == nil || !strings.Contains(err.Error(), "no API token found") {
+		t.Fatalf("valid product error = %v, want missing-token error", err)
+	}
+
+	_, _, _, err = runCLI(t, "serve", "--token", "dummy", "--product", "other")
+	if err == nil || !strings.Contains(err.Error(), "must be platform or mari") {
+		t.Fatalf("invalid product error = %v, want allowed-values guidance", err)
+	}
+
+	for _, removed := range []string{"--platform", "--mari"} {
+		_, _, _, err = runCLI(t, "serve", removed)
+		if err == nil || !strings.Contains(err.Error(), "unknown flag") {
+			t.Fatalf("removed flag %s error = %v, want unknown-flag error", removed, err)
+		}
 	}
 }
 

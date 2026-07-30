@@ -51,6 +51,9 @@ changelog:
       - Merge branch
 
 release:
+  extra_files:
+    - glob: .mcpb-dist/*.mcpb
+    - glob: .mcpb-dist/mcpb-checksums.txt
   header: |
     nsmcp is the NowSecure MCP server and CLI, exposing read-only tools for the NowSecure Platform and MARI (Mobile App Risk Intelligence) over the Model Context Protocol.
   footer: |
