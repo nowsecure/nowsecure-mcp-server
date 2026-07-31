@@ -24,6 +24,7 @@ mcpb:
 	rm -rf $(MCPB_STAGE) $(MCPB_FILE) $(MCPB_CHECKSUM)
 	mkdir -p $(MCPB_STAGE)/server $(dir $(MCPB_FILE))
 	sed 's/"version": "[^"]*"/"version": "$(VERSION)"/' $(MCPB_MANIFEST) > $(MCPB_STAGE)/manifest.json
+	cp LICENSE.md $(MCPB_STAGE)/LICENSE.md
 	GOCACHE=$(MCPB_GOCACHE) CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(GOFLAGS) -trimpath -ldflags "-s -w $(LDFLAGS)" -o $(MCPB_STAGE)/server/nsmcp-arm64 ./cmd/nsmcp
 	GOCACHE=$(MCPB_GOCACHE) CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(GOFLAGS) -trimpath -ldflags "-s -w $(LDFLAGS)" -o $(MCPB_STAGE)/server/nsmcp-amd64 ./cmd/nsmcp
 	lipo -create -output $(MCPB_STAGE)/server/nsmcp $(MCPB_STAGE)/server/nsmcp-arm64 $(MCPB_STAGE)/server/nsmcp-amd64
@@ -31,7 +32,7 @@ mcpb:
 	chmod 0755 $(MCPB_STAGE)/server/nsmcp
 	codesign --force --sign - $(MCPB_STAGE)/server/nsmcp
 	GOCACHE=$(MCPB_GOCACHE) CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -trimpath -ldflags "-s -w $(LDFLAGS)" -o $(MCPB_STAGE)/server/nsmcp.exe ./cmd/nsmcp
-	cd $(MCPB_STAGE) && zip -q -X -r $(abspath $(MCPB_FILE)) manifest.json server
+	cd $(MCPB_STAGE) && zip -q -X -r $(abspath $(MCPB_FILE)) manifest.json LICENSE.md server
 	cd $(dir $(MCPB_FILE)) && shasum -a 256 $(notdir $(MCPB_FILE)) > $(notdir $(MCPB_CHECKSUM))
 	@echo "built $(MCPB_FILE)"
 
