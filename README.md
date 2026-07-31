@@ -10,6 +10,9 @@ AI assistant a focused set of read-only tools for each — see
 
 ## Install
 
+For step-by-step setup guidance, see the NowSecure Support article
+[Install and use the NowSecure MCP Server with Claude Desktop](https://support.nowsecure.com/hc/en-us/articles/47801563177997-Install-and-use-the-NowSecure-MCP-Server-with-Claude-Desktop-and-other-MCP-clients).
+
 ### Claude Desktop: MCPB bundle (fastest)
 
 1. Download the `.mcpb` asset from the
