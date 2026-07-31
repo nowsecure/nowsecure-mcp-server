@@ -461,3 +461,12 @@ make test    # go test ./...
 make vet     # go vet ./...
 make fmt     # gofmt -w .
 ```
+
+## License
+
+Copyright © 2026 NowSecure, Inc. All rights reserved.
+
+This is proprietary software. Authorized NowSecure customers may download,
+build, and run unmodified copies solely for internal use with NowSecure
+services they are authorized to access, subject to their applicable agreement
+with NowSecure. See the [NowSecure Customer Use License](LICENSE.md).
