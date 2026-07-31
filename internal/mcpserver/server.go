@@ -76,7 +76,7 @@ func (s *srv) newServer(cfg *config.Config, version string) *mcp.Server {
 		Description: "Parse a NowSecure console URL or deep link into the ids the other tools take, under their exact parameter names: platform, package, app_ref, assessment_ref (which also carries numeric task ids from URLs), mari_assessment_ref, group_refs, and finding. " +
 			"Pass mari_assessment_ref to get_mari_assessment as its assessment_ref. " +
 			"Pure/local: makes no API calls. Unparseable id-like segments are reported in a warnings array rather than dropped silently.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, s.decodeURL)
 
 	if cfg.EnablePlatform {
@@ -157,5 +157,3 @@ func productTitle(cfg *config.Config) string {
 func readOnlyAPI() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: true}
 }
-
-func boolPtr(b bool) *bool { return &b }

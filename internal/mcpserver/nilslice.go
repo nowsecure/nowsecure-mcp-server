@@ -38,8 +38,7 @@ func denilValue(rv reflect.Value) {
 		}
 		denilValue(rv.Elem())
 	case reflect.Struct:
-		for i := range rv.NumField() {
-			f := rv.Field(i)
+		for _, f := range rv.Fields() {
 			if !f.CanSet() {
 				continue
 			}
