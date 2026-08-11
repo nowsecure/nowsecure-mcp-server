@@ -76,12 +76,118 @@ func TestListAssessments_EnumValidation(t *testing.T) {
 		{"rating", ListAssessmentsParams{ApplicationRef: "app-1", Rating: []string{"crit"}}, `invalid rating "crit"`},
 		{"type", ListAssessmentsParams{ApplicationRef: "app-1", Type: []string{"baselin"}}, `invalid type "baselin"`},
 		{"platforms", ListAssessmentsParams{ApplicationRef: "app-1", PlatformTypes: []string{"windows"}}, `invalid platforms "windows"`},
+		{"track", ListAssessmentsParams{ApplicationRef: "app-1", Track: "intel"}, `invalid track "intel"`},
 	}
 	for _, tc := range cases {
 		_, err := c.ListAssessments(t.Context(), tc.p)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", tc.name, err, tc.want)
 		}
+	}
+}
+
+// TestListAssessments_TrackFiltersUpstream guards the key source-selection
+// contract: track is translated to Platform's visibility/type filters before
+// the merged assessment history is sorted and paginated.
+func TestListAssessments_TrackFiltersUpstream(t *testing.T) {
+	cases := []struct {
+		name           string
+		track          string
+		types          []string
+		wantVisibility string
+		wantTypes      []string
+	}{
+		{"default platform", "", nil, "private", []string{"advanced", "baseline", "guided"}},
+		{"explicit platform intersects types", "PLATFORM", []string{"baseline", "pen_test"}, "private", []string{"baseline"}},
+		{"store monitor", "store_monitor", nil, "public", []string{"baseline"}},
+		{"external", "external", nil, "private", []string{"pen_test", "workstation"}},
+		{"all", "all", nil, "", nil},
+		{"all preserves type", "all", []string{"guided"}, "", []string{"guided"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				var filters []struct {
+					Name  string `json:"name"`
+					Value any    `json:"value"`
+				}
+				if err := json.Unmarshal([]byte(r.URL.Query().Get("filters")), &filters); err != nil {
+					t.Fatalf("filters: %v", err)
+				}
+				values := make(map[string]any, len(filters))
+				for _, filter := range filters {
+					values[filter.Name] = filter.Value
+				}
+				if got, _ := values["visibility"].([]any); tc.wantVisibility == "" {
+					if _, ok := values["visibility"]; ok {
+						t.Errorf("visibility filter = %v, want absent", values["visibility"])
+					}
+				} else if len(got) != 1 || got[0] != tc.wantVisibility {
+					t.Errorf("visibility filter = %v, want [%s]", got, tc.wantVisibility)
+				}
+				gotTypes, _ := values["type"].([]any)
+				if len(gotTypes) != len(tc.wantTypes) {
+					t.Errorf("type filter = %v, want %v", gotTypes, tc.wantTypes)
+				} else {
+					for i, want := range tc.wantTypes {
+						if gotTypes[i] != want {
+							t.Errorf("type filter = %v, want %v", gotTypes, tc.wantTypes)
+							break
+						}
+					}
+				}
+				_, _ = w.Write([]byte(`{"rows":[],"pageInfo":{"hasNextPage":false}}`))
+			})
+			if _, err := c.ListAssessments(t.Context(), ListAssessmentsParams{
+				ApplicationRef: "app-1", Track: tc.track, Type: tc.types,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestListAssessments_IncompatibleTrackAndTypeIsEmpty(t *testing.T) {
+	c := New("http://unused", "tok") // disjoint filters must not reach HTTP
+	got, err := c.ListAssessments(t.Context(), ListAssessmentsParams{
+		ApplicationRef: "app-1", Track: "platform", Type: []string{"pen_test"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Assessments) != 0 || got.Page.HasNextPage {
+		t.Errorf("page = %+v, want an empty terminal page", got)
+	}
+}
+
+func TestListAssessments_SourceClassification(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"rows":[
+				{"ref":"lab","visibility":"private","type":"baseline","application":{"ref":"app-1"},"impactTypes":{"pass":3}},
+				{"ref":"monitor","visibility":"public","type":"baseline","application":{"ref":"should-not-win"},"appliedPolicy":{"name":"also-ignored"},"impactTypes":{"pass":9}},
+				{"ref":"external","visibility":"private","type":"pen_test","application":{"ref":"app-1"},"impactTypes":{"pass":1}}
+			],
+			"pageInfo":{"hasNextPage":false}
+		}`))
+	})
+	got, err := c.ListAssessments(t.Context(), ListAssessmentsParams{ApplicationRef: "app-1", Track: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Assessments) != 3 {
+		t.Fatalf("assessments = %+v, want 3 rows", got.Assessments)
+	}
+	wantTracks := []string{"platform", "store_monitor", "external"}
+	wantFindings := []bool{true, false, false}
+	for i, assessment := range got.Assessments {
+		if assessment.Track != wantTracks[i] || assessment.FindingsAvailable != wantFindings[i] {
+			t.Errorf("row %d = track %q findings_available=%t, want %q/%t",
+				i, assessment.Track, assessment.FindingsAvailable, wantTracks[i], wantFindings[i])
+		}
+	}
+	if got.Assessments[1].Findings.Pass != nil {
+		t.Errorf("store-monitor pass = %v, want omitted", got.Assessments[1].Findings.Pass)
 	}
 }
 
@@ -390,7 +496,7 @@ func TestGetAssessmentFindings_RefNeverFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for an unknown ref")
 	}
-	if !strings.Contains(err.Error(), "not found among the lab-analyzed assessments") || !strings.Contains(err.Error(), "findings_available") {
+	if !strings.Contains(err.Error(), "not found among the NowSecure Platform assessments") || !strings.Contains(err.Error(), "findings_available") {
 		t.Errorf("error = %q, want not-found + findings_available hint", err)
 	}
 	if n := assessHits.Load(); n != 2 {

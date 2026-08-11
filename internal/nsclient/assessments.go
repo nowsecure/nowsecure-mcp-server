@@ -30,9 +30,22 @@ var (
 	enumStatus            = []string{"completed", "failed", "processing", "pending", "cancelled", "partial", "incomplete"} //nolint:misspell // "cancelled" is the upstream API's actual wire value
 	enumRating            = []string{"critical", "poor", "fair", "good", "excellent"}
 	enumType              = []string{"advanced", "baseline", "guided", "pen_test", "workstation"}
+	enumAssessmentTrack   = []string{"platform", "store_monitor", "external", "all"}
 	enumThresholdSeverity = []string{"critical", "high", "medium", "low"}
 	enumMARIRating        = []string{"A", "B", "C", "D", "F"}
 	enumMARIRiskCategory  = []string{"LOW", "MEDIUM", "HIGH"}
+)
+
+const (
+	assessmentTrackPlatform     = "platform"
+	assessmentTrackStoreMonitor = "store_monitor"
+	assessmentTrackExternal     = "external"
+	assessmentTrackAll          = "all"
+)
+
+var (
+	platformAssessmentTypes = []string{"advanced", "baseline", "guided"}
+	externalAssessmentTypes = []string{"pen_test", "workstation"}
 )
 
 // validateEnum matches each value case-insensitively against allowed and
@@ -80,6 +93,7 @@ type ListAssessmentsParams struct {
 	Status         []string // completed, failed, processing, ...
 	Rating         []string // critical, poor, fair, good, excellent
 	Type           []string // advanced, baseline, guided, pen_test, workstation
+	Track          string   // platform (default), store_monitor, external, or all
 	PackageKey     string   // android package / ios bundle id
 	AppstoreKey    string   // app store application key
 	Since          string   // date or date-time lower bound
@@ -107,29 +121,79 @@ func (r rawImpactTypes) counts() SeverityCounts {
 	}
 }
 
+type rawAssessment struct {
+	Ref         string `json:"ref"`
+	Application struct {
+		Ref  string `json:"ref"`
+		Name string `json:"name"`
+	} `json:"application"`
+	BuildVersion   string  `json:"buildVersion"`
+	CreatedAt      string  `json:"createdAt"`
+	Origin         string  `json:"origin"`
+	PackageKey     string  `json:"packageKey"`
+	PlatformType   string  `json:"platformType"`
+	Score          float64 `json:"score"`
+	Status         string  `json:"status"`
+	PackageVersion string  `json:"packageVersion"`
+	Rating         string  `json:"rating"`
+	Type           string  `json:"type"`
+	Visibility     string  `json:"visibility"`
+	AppliedPolicy  struct {
+		Name string `json:"name"`
+	} `json:"appliedPolicy"`
+	ImpactTypes rawImpactTypes `json:"impactTypes"`
+}
+
 type rawAssessmentsResponse struct {
-	Rows []struct {
-		Ref         string `json:"ref"`
-		Application struct {
-			Ref  string `json:"ref"`
-			Name string `json:"name"`
-		} `json:"application"`
-		BuildVersion   string  `json:"buildVersion"`
-		CreatedAt      string  `json:"createdAt"`
-		Origin         string  `json:"origin"`
-		PackageKey     string  `json:"packageKey"`
-		PlatformType   string  `json:"platformType"`
-		Score          float64 `json:"score"`
-		Status         string  `json:"status"`
-		PackageVersion string  `json:"packageVersion"`
-		Rating         string  `json:"rating"`
-		Type           string  `json:"type"`
-		AppliedPolicy  struct {
-			Name string `json:"name"`
-		} `json:"appliedPolicy"`
-		ImpactTypes rawImpactTypes `json:"impactTypes"`
-	} `json:"rows"`
-	PageInfo rawCursorPage `json:"pageInfo"`
+	Rows     []rawAssessment `json:"rows"`
+	PageInfo rawCursorPage   `json:"pageInfo"`
+}
+
+func assessmentTypesForTrack(track string, requested []string) []string {
+	var allowed []string
+	switch track {
+	case assessmentTrackPlatform:
+		allowed = platformAssessmentTypes
+	case assessmentTrackStoreMonitor:
+		allowed = []string{"baseline"}
+	case assessmentTrackExternal:
+		allowed = externalAssessmentTypes
+	case assessmentTrackAll:
+		return requested
+	}
+	if len(requested) == 0 {
+		return append([]string(nil), allowed...)
+	}
+	wanted := make(map[string]bool, len(allowed))
+	for _, value := range allowed {
+		wanted[value] = true
+	}
+	out := make([]string, 0, len(requested))
+	for _, value := range requested {
+		if wanted[value] {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+// assessmentTrack uses the upstream source discriminator when present. The
+// fallback preserves compatibility with older responses and test fixtures
+// that predate visibility being returned by /v2/assessments.
+func assessmentTrack(r rawAssessment) string {
+	if r.Type == "pen_test" || r.Type == "workstation" {
+		return assessmentTrackExternal
+	}
+	switch r.Visibility {
+	case "public":
+		return assessmentTrackStoreMonitor
+	case "private":
+		return assessmentTrackPlatform
+	}
+	if r.Application.Ref == "" && r.AppliedPolicy.Name == "" {
+		return assessmentTrackStoreMonitor
+	}
+	return assessmentTrackPlatform
 }
 
 // ListAssessments lists assessments (scan history) for an application.
@@ -164,6 +228,21 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 	if err != nil {
 		return nil, err
 	}
+	track := strings.TrimSpace(p.Track)
+	if track == "" {
+		track = assessmentTrackPlatform
+	}
+	tracks, err := validateEnum("track", []string{track}, enumAssessmentTrack)
+	if err != nil {
+		return nil, err
+	}
+	track = tracks[0]
+	typ = assessmentTypesForTrack(track, typ)
+	// An explicit type selection can be disjoint from its track (for example,
+	// track=platform with type=pen_test). That conjunction has no rows.
+	if len(p.Type) > 0 && len(typ) == 0 {
+		return &AssessmentPage{Assessments: []Assessment{}, Page: CursorPage{}}, nil
+	}
 	q := url.Values{}
 	f := filters{}
 	f = f.add("applicationRef", p.ApplicationRef)
@@ -182,6 +261,12 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 	}
 	if len(rating) > 0 {
 		f = f.add("rating", rating)
+	}
+	switch track {
+	case assessmentTrackPlatform, assessmentTrackExternal:
+		f = f.add("visibility", []string{"private"})
+	case assessmentTrackStoreMonitor:
+		f = f.add("visibility", []string{"public"})
 	}
 	if len(typ) > 0 {
 		f = f.add("type", typ)
@@ -230,13 +315,12 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 			}
 			continue
 		}
-		// Store-monitor rows arrive without an application ref or applied
-		// policy and have no lab analysis behind them: their findings cannot
-		// be served and their pass count was never computed.
-		track := "platform"
+		// Visibility is the source discriminator on this merged endpoint:
+		// private Platform rows back Platform findings, public rows are store
+		// monitoring, and private pen-test/workstation rows are external.
+		rowTrack := assessmentTrack(r)
 		counts := r.ImpactTypes.counts()
-		if r.Application.Ref == "" && r.AppliedPolicy.Name == "" {
-			track = "store_monitor"
+		if rowTrack == assessmentTrackStoreMonitor {
 			counts.Pass = nil
 		}
 		appRef := r.Application.Ref
@@ -248,8 +332,8 @@ func (c *Client) ListAssessments(ctx context.Context, p ListAssessmentsParams) (
 			Ref:               r.Ref,
 			Title:             r.Application.Name,
 			AppRef:            appRef,
-			Track:             track,
-			FindingsAvailable: track == "platform",
+			Track:             rowTrack,
+			FindingsAvailable: rowTrack == assessmentTrackPlatform,
 			Platform:          r.PlatformType,
 			Package:           r.PackageKey,
 			PackageVersion:    r.PackageVersion,
@@ -367,7 +451,7 @@ func (c *Client) resolveAssessment(ctx context.Context, platform, pkg, groupRef,
 	}
 	if !ok {
 		if ref != "" {
-			return rawAppAssessment{}, fmt.Errorf("assessment %q not found among the lab-analyzed assessments of %s/%s — store-monitor refs (see list_assessments findings_available=false), other apps' refs, and unknown ids all land here; pick a row with findings_available=true or omit assessment_ref for the latest servable scan", ref, platform, pkg)
+			return rawAppAssessment{}, fmt.Errorf("assessment %q not found among the NowSecure Platform assessments of %s/%s — store-monitor/external refs (see list_assessments findings_available=false), other apps' refs, and unknown ids all land here; pick a row with findings_available=true or omit assessment_ref for the latest servable scan", ref, platform, pkg)
 		}
 		return rawAppAssessment{}, fmt.Errorf("no assessments found for %s/%s", platform, pkg)
 	}

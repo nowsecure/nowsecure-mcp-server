@@ -578,6 +578,37 @@ func TestListAssessments_MissingFilterIsToolError(t *testing.T) {
 	}
 }
 
+// TestListAssessments_TrackPassThrough covers the full MCP path: the new tool
+// argument reaches the client as a pre-pagination visibility filter and the
+// returned public row is marked unavailable to the lab findings tool.
+func TestListAssessments_TrackPassThrough(t *testing.T) {
+	cfg := &config.Config{
+		Token:          "test-token",
+		EnablePlatform: true,
+		BaseURL: backendURL(t, func(w http.ResponseWriter, r *http.Request) {
+			filters := r.URL.Query().Get("filters")
+			if !strings.Contains(filters, `"name":"visibility","value":["public"]`) {
+				t.Errorf("filters = %s, want public visibility", filters)
+			}
+			if !strings.Contains(filters, `"name":"type","value":["baseline"]`) {
+				t.Errorf("filters = %s, want baseline type", filters)
+			}
+			_, _ = w.Write([]byte(`{
+				"rows":[{"ref":"sm-1","visibility":"public","type":"baseline","platformType":"android","packageKey":"com.x","impactTypes":{}}],
+				"pageInfo":{"hasNextPage":false}
+			}`))
+		}),
+	}
+	res := callTool(t, session(t, cfg), "list_assessments", map[string]any{
+		"app_ref": "app-1", "track": "store_monitor",
+	})
+	rows := structured(t, res)["assessments"].([]any)
+	row := rows[0].(map[string]any)
+	if row["track"] != "store_monitor" || row["findings_available"] != false {
+		t.Errorf("row = %v, want store_monitor with findings unavailable", row)
+	}
+}
+
 // TestGetAssessmentFindings_AffectedOnlyAndStatus drives the full resolve chain
 // (portfolio lookup -> per-app assessment list -> findings) and checks the
 // affected_only default plus the newly surfaced status field.

@@ -272,7 +272,7 @@ and still serves their older scan history.
 | Tool | Description |
 | --- | --- |
 | `list_apps` | List portfolio apps with their latest security score, rating, and open vulnerability count. The starting point for DevSecOps triage. |
-| `list_assessments` | Scan history of one app, newest first, with score, rating, status, and finding counts by severity. |
+| `list_assessments` | NowSecure Platform assessment history for one app, newest first, with score, rating, status, and finding counts by severity. Defaults to findings-capable Platform rows; select `store_monitor`, `external`, or `all` with `track` for other history. |
 | `get_assessment_findings` | Findings for one assessment as a compact, triage-ready list, sorted most-severe first. |
 | `get_finding` | Documentation for a single finding: description, steps to reproduce, testing method, and remediation guidance. |
 | `search_findings` | Free-text search over the finding catalog (key, title, description, category) — returns finding keys when you only know a topic or risk. |
