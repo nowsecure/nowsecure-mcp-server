@@ -25,10 +25,10 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name: "list_assessments",
-		Description: "List the scan history of an app, newest first, with score, rating, status, and finding counts by severity. " +
+		Description: "List the scan history of an app, newest first, with score, rating, status, and finding counts by severity. Defaults to track=platform, the NowSecure Platform assessments that get_assessment_findings can serve; for an app_ref from list_apps, the first row is the same assessment family as list_apps.assessment_ref. " +
 			"Requires app_ref, package, or appstore_key — the API rejects portfolio-wide queries, so to survey many apps call list_apps first and query per app. " +
 			"Note: package/appstore_key scoping merges the history of EVERY app sharing that id across groups; use app_ref for one app's history. " +
-			"Rows with track=store_monitor come from store monitoring, not lab analysis: their finding counts use a different upstream source than get_assessment_findings (which cannot serve them — check findings_available). " +
+			"Use track=store_monitor for store-monitoring history, track=external for pen-test/workstation rows, or track=all for the mixed history. Those tracks cannot be served by get_assessment_findings and report findings_available=false. " +
 			"Further filter by platform/status/rating/type/date. Cursor-paginated: pages default to the 10 newest scans and page_size caps at 25 (larger values are clamped) — follow next_cursor for older history. " +
 			"Unlike the portfolio tools (list_apps, get_apps_affected_by_finding), history is NOT limited to the last 12 months: this tool still sees apps that have aged out of the portfolio. " +
 			"Default text block is a compact table (one row per assessment; the findings column packs severity counts as c/h/m/l/w/i[/p]; '# ' comment lines carry the page envelope); pass format:\"json\" to mirror the full JSON in the text block. structuredContent always carries the canonical JSON.",
@@ -107,6 +107,7 @@ type listAssessmentsInput struct {
 	Status      []string `json:"status,omitempty" jsonschema:"filter by status: completed, failed, processing, pending, cancelled, partial, incomplete"` //nolint:misspell // "cancelled" is the upstream API's actual wire value
 	Rating      []string `json:"rating,omitempty" jsonschema:"filter by rating: critical, poor, fair, good, excellent"`
 	Type        []string `json:"type,omitempty" jsonschema:"filter by assessment type: advanced, baseline, guided, pen_test, workstation"`
+	Track       string   `json:"track,omitempty" jsonschema:"assessment source: platform (default; NowSecure Platform and findings-capable), store_monitor, external (pen-test/workstation), or all (mixed history)"`
 	Since       string   `json:"since,omitempty" jsonschema:"only assessments created on/after this date (YYYY-MM-DD or RFC3339)"`
 	Until       string   `json:"until,omitempty" jsonschema:"only assessments created on/before this date (YYYY-MM-DD or RFC3339)"`
 	OrderBy     string   `json:"order_by,omitempty" jsonschema:"sort order: created_at, -created_at, build_version, package_version (default -created_at)"`
@@ -201,6 +202,7 @@ func (s *srv) listAssessments(ctx context.Context, _ *mcp.CallToolRequest, in li
 		Status:         in.Status,
 		Rating:         in.Rating,
 		Type:           in.Type,
+		Track:          in.Track,
 		Since:          in.Since,
 		Until:          in.Until,
 		OrderBy:        in.OrderBy,

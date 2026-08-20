@@ -59,9 +59,10 @@ type SeverityCounts struct {
 }
 
 // Assessment is one assessment (scan) in the portfolio history. Track is
-// "platform" for lab-analyzed scans and "store_monitor" for store-monitor
-// scans, which have no lab analysis behind them: FindingsAvailable says
-// whether get_assessment_findings can serve this ref.
+// "platform" for NowSecure Platform assessments, "store_monitor" for store
+// monitoring, or "external" for pen-test/workstation assessments.
+// FindingsAvailable says whether get_assessment_findings can serve this ref;
+// only platform rows can.
 type Assessment struct {
 	Ref               string `json:"assessment_ref"`
 	Title             string `json:"title,omitempty"`

@@ -134,7 +134,7 @@ func instructions(cfg *config.Config) string {
 			"get_assessment_findings rows omit recommendation prose by default (pull it back with check_ids or include_recommendations); its default also omits artifact-inventory rows (counts.artifacts still counts them, include_artifacts=true restores them), and min_severity=low is the scored-vulnerability triage view. " +
 			"get_finding returns a finding's docs and remediation guidance and suggests near-miss keys on a partial name (so a bare \"janus\" recovers android_janus_vuln); get_apps_affected_by_finding shows fleet impact. " +
 			"search_findings substring-searches the whole catalog (key, title, description prose, category) and returns finding keys — use it when you only know a topic or risk, not a key. " +
-			"list_assessments shows one app's scan history and REQUIRES app_ref, package, or appstore_key — it cannot list scans portfolio-wide. " +
+			"list_assessments shows one app's scan history and REQUIRES app_ref, package, or appstore_key — it cannot list scans portfolio-wide. It defaults to findings-capable NowSecure Platform assessments; use track=store_monitor, external, or all only when that other history is needed. " +
 			"Platform scores are 0-100 where HIGHER is better.\n")
 	}
 	if cfg.EnableMARI {
