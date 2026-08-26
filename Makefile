@@ -31,6 +31,8 @@ mcpb:
 	rm $(MCPB_STAGE)/server/nsmcp-arm64 $(MCPB_STAGE)/server/nsmcp-amd64
 	chmod 0755 $(MCPB_STAGE)/server/nsmcp
 	codesign --force --sign - $(MCPB_STAGE)/server/nsmcp
+	lipo $(MCPB_STAGE)/server/nsmcp -verify_arch arm64 x86_64
+	codesign --verify --strict $(MCPB_STAGE)/server/nsmcp
 	GOCACHE=$(MCPB_GOCACHE) CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -trimpath -ldflags "-s -w $(LDFLAGS)" -o $(MCPB_STAGE)/server/nsmcp.exe ./cmd/nsmcp
 	cd $(MCPB_STAGE) && zip -q -X -r $(abspath $(MCPB_FILE)) manifest.json LICENSE.md server
 	cd $(dir $(MCPB_FILE)) && shasum -a 256 $(notdir $(MCPB_FILE)) > $(notdir $(MCPB_CHECKSUM))
