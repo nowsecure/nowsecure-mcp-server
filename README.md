@@ -81,8 +81,10 @@ Manage with `claude mcp list` / `claude mcp get nsmcp-platform` /
 
 Download the `.mcpb` release asset and open it in Claude Desktop for a guided
 install. The single bundle supports macOS (`arm64` and `amd64`) and Windows
-`amd64`; the installer asks for `platform` or `mari` and stores your API token
-as a sensitive setting.
+`amd64`; the installer asks for a product and stores your API token as a
+sensitive setting. Enter exactly `platform` to analyze mobile apps your
+organization develops and scans, or `mari` to evaluate the risk of vendor and
+other third-party mobile apps. No other product values are accepted.
 
 For a manual installation, use Settings → Developer → Edit Config to open
 `claude_desktop_config.json`:
@@ -445,7 +447,9 @@ make mcpb VERSION=0.1.3
 # -> dist/nsmcp.mcpb
 ```
 
-The bundle prompts for the product (`platform` or `mari`) when installed.
+The bundle asks for a product when installed. Enter exactly `platform` for
+mobile apps your organization develops and scans, or `mari` for vendor and
+other third-party mobile apps; no other values are accepted.
 It contains a universal macOS binary (`arm64` + `amd64`) and a Windows `amd64`
 binary, selected by the manifest's platform override. `mcpb-checksums.txt` is
 written alongside the bundle, and the bundle is attached to each GitHub

@@ -51,8 +51,8 @@
   "user_config": {
     "product": {
       "type": "string",
-      "title": "NowSecure product",
-      "description": "Product to expose: platform for your own app portfolio, or mari for third-party app risk intelligence.",
+      "title": "NowSecure product: platform or mari",
+      "description": "Enter exactly \"platform\" for mobile apps your organization develops and scans, or \"mari\" for vendor and other third-party mobile apps. No other values are accepted.",
       "default": "platform",
       "required": true
     },
