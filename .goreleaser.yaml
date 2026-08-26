@@ -57,6 +57,12 @@ release:
     - glob: .mcpb-dist/mcpb-checksums.txt
   header: |
     nsmcp is the NowSecure MCP server and CLI, exposing read-only tools for the NowSecure Platform and MARI (Mobile App Risk Intelligence) over the Model Context Protocol.
+
+    ## Installation
+
+    **Preferred:** Download the `.mcpb` asset below and open it in Claude Desktop for a guided installation. The bundle includes nsmcp and supports macOS (Apple silicon and Intel) and Windows x64.
+
+    Standalone binaries are also available in the platform-specific `.tar.gz` and `.zip` archives below for other MCP clients, CLI use, and manual installation. See the [README](https://github.com/nowsecure/nowsecure-mcp-server#install) for setup instructions.
   footer: |
     > **macOS:** binaries are unsigned; if Gatekeeper blocks a downloaded binary, clear the quarantine flag:
     > `xattr -d com.apple.quarantine ./nsmcp`
