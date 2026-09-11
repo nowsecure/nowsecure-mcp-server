@@ -278,7 +278,7 @@ and still serves their older scan history.
 | --- | --- |
 | `list_apps` | List portfolio apps with their latest security score, rating, and open vulnerability count. The starting point for DevSecOps triage. |
 | `list_assessments` | NowSecure Platform assessment history for one app, newest first, with score, rating, status, and finding counts by severity. Defaults to findings-capable Platform rows; select `store_monitor`, `external`, or `all` with `track` for other history. |
-| `get_assessment_findings` | Findings for one assessment as a compact, triage-ready list, sorted most-severe first. |
+| `get_assessment_findings` | Findings for an assessment, sorted most-severe first, with supporting evidence and remediation guidance available when needed. |
 | `get_finding` | Documentation for a single finding: description, steps to reproduce, testing method, and remediation guidance. |
 | `search_findings` | Free-text search over the finding catalog (key, title, description, category) — returns finding keys when you only know a topic or risk. |
 | `get_apps_affected_by_finding` | Fleet-wide impact: which portfolio apps' latest assessments are affected by a given finding. |
@@ -305,6 +305,16 @@ their prompt picker. Each product mode advertises only its own prompts.
 | `platform_triage_portfolio` | Prioritize the riskiest first-party apps and their remediation work. |
 | `platform_review_app` | Review the latest scan and affected findings for an app title, package, ref, or URL. |
 | `platform_investigate_finding` | Find fleet-wide impact and remediation guidance for a finding key, topic, or URL. |
+
+You can also ask your assistant in chat:
+
+- "Which high-severity findings affect my app?"
+- "Show me the evidence behind this finding."
+- "Use the scan evidence to help fix this finding in my source code."
+
+Your assistant can retrieve scan observations and available code locations to
+explain a finding or guide a fix. Source changes and tests use the assistant's
+coding tools; a new scan is needed to verify the result.
 
 ### MARI prompts
 
@@ -468,6 +478,9 @@ make test    # go test ./...
 make vet     # go vet ./...
 make fmt     # gofmt -w .
 ```
+
+For evidence retrieval details and the opt-in context consumption audit, see
+[Evidence integration and testing](docs/evidence.md).
 
 ## License
 

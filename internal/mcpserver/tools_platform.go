@@ -35,11 +35,13 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 		Annotations: readOnlyAPI(),
 	}, s.listAssessments)
 
-	addTool(s, server, &mcp.Tool{
+	addFindingsTool(s, server, &mcp.Tool{
 		Name: "get_assessment_findings",
 		Description: "Get the findings for one assessment as a compact, triage-ready list (check_id, title, category, severity, affected, cvss), sorted most-severe first. " +
-			"Evidence, raw context, and recommendation prose are deliberately stripped to keep the response small — for remediation, call get_finding with a check_id, " +
-			"or re-query with check_ids=[...] for full recommendations on specific findings, or include_recommendations=true for truncated ones on every row. " +
+			"For remediation, re-query with check_ids=[...] and include_evidence=true to retrieve a page of evidence rows, field definitions, referenced code locations, and full developer recommendations for the selected findings. " +
+			"Evidence defaults to 20 rows per finding (evidence_limit max 100); each row is untruncated. Follow evidence.next_offset with evidence_offset and a single check_id while has_more=true, keeping the same assessment_ref. Code locations cover only the returned rows. " +
+			"Evidence is omitted by default; check_ids alone returns full recommendations, include_recommendations=true returns truncated recommendations on every row, and get_finding supplies general documentation. " +
+			"Join evidence rows' location_id references to evidence.code_locations[].id; unresolved_location_ids identifies missing code data. Empty evidence is a data gap, not proof that a finding is fixed. " +
 			"Takes app_ref (returned by list_apps/list_assessments); assessment_ref is optional — when omitted, the assessment the app's portfolio row points at is used (its latest known scan, which can lag a just-finished one) — " +
 			"check the returned status/created_at, and pass an explicit ref from a list_assessments row with findings_available=true to pin a scan. " +
 			"The app must still be in the portfolio's 12-month window (a completed scan in the last 12 months): an app_ref that has aged out fails with 'not found in portfolio' even though list_assessments still lists its history. " +
@@ -52,7 +54,7 @@ func (s *srv) registerPlatformTools(server *mcp.Server) {
 	addTool(s, server, &mcp.Tool{
 		Name: "get_finding",
 		Description: "Get documentation for a single finding by key or id: title, category, severity/CVSS range, description, steps to reproduce, testing method, and markdown remediation guidance. " +
-			"Static reference data (no per-app evidence). Use include=[...] to fetch only specific prose sections (e.g. just remediation). " +
+			"Static reference data (no per-app evidence); use get_assessment_findings with check_ids and include_evidence=true for scan-specific evidence and code locations. Use include=[...] to fetch only specific prose sections (e.g. just remediation). " +
 			"Two taxonomies: category is the lab analysis category (lowercase; matches get_assessment_findings rows), categories are capability groups (Title Case). " +
 			"platform is omitted for findings that apply to both android and ios; application_count equals get_apps_affected_by_finding's total and shares its 12-month portfolio window (apps last scanned earlier are not counted). " +
 			"Use after list_apps/get_assessment_findings to understand or remediate a specific finding.",
@@ -126,6 +128,9 @@ type getFindingsInput struct {
 	CheckIDs         []string `json:"check_ids,omitempty" jsonschema:"only return these findings (check_id values), each with its FULL untruncated developer recommendation — the on-demand deep-dive"`
 	IncludeRecs      bool     `json:"include_recommendations,omitempty" jsonschema:"include a truncated developer recommendation on every row (default false; prefer get_finding or check_ids for full remediation)"`
 	IncludeArtifacts bool     `json:"include_artifacts,omitempty" jsonschema:"include category=artifact inventory rows (extracted files, IP addresses, ...) in the findings array; default false keeps only scored findings (counts.artifacts still reports them)"`
+	IncludeEvidence  bool     `json:"include_evidence,omitempty" jsonschema:"return paged evidence rows, field definitions, and referenced code locations for remediation; requires non-empty check_ids. Existing affected_only/min_severity/limit filters still apply"`
+	EvidenceOffset   int      `json:"evidence_offset,omitempty" jsonschema:"zero-based evidence row offset from evidence.next_offset (default 0); requires include_evidence=true and exactly one check_id when nonzero. Keep the same assessment_ref while paging"`
+	EvidenceLimit    int      `json:"evidence_limit,omitempty" jsonschema:"evidence rows per finding (default 20, max 100; larger values clamped); requires include_evidence=true. Rows and referenced code data remain untruncated, so lower this for large rows; this is not a byte cap"`
 	Format           string   `json:"format,omitempty" jsonschema:"text-content format: table (default, compact tab-separated grid) or json (text block mirrors the full structuredContent JSON); structuredContent always carries the canonical JSON. Forced to json when check_ids or include_recommendations is set (multiline recommendation prose does not tabulate)"`
 }
 
@@ -223,9 +228,8 @@ func (s *srv) getAssessmentFindings(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, nil, err
 	}
-	// Recommendation prose (check_ids / include_recommendations) is multiline
-	// markdown that does not tabulate; force the JSON text block.
-	if len(in.CheckIDs) > 0 || in.IncludeRecs {
+	// Recommendations and nested evidence do not tabulate; force JSON.
+	if len(in.CheckIDs) > 0 || in.IncludeRecs || in.IncludeEvidence {
 		format = formatJSON
 	}
 	affectedOnly := true
@@ -246,6 +250,9 @@ func (s *srv) getAssessmentFindings(ctx context.Context, _ *mcp.CallToolRequest,
 		CheckIDs:         in.CheckIDs,
 		IncludeRecs:      in.IncludeRecs,
 		IncludeArtifacts: in.IncludeArtifacts,
+		IncludeEvidence:  in.IncludeEvidence,
+		EvidenceOffset:   in.EvidenceOffset,
+		EvidenceLimit:    in.EvidenceLimit,
 	})
 	if err != nil {
 		return nil, nil, err

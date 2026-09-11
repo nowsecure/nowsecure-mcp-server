@@ -34,7 +34,7 @@ func registerPlatformPrompts(server *mcp.Server) {
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Review the latest NowSecure Platform results for %s. Resolve it with decode_nowsecure_url or list_apps, inspect its latest scan and affected findings, and summarize risk plus prioritized remediation. Include the app_ref, assessment_ref, and finding keys.", app), nil
+		return fmt.Sprintf("Review the latest NowSecure Platform results for %s. Resolve it with decode_nowsecure_url or list_apps, inspect its latest scan and affected findings, and summarize risk plus prioritized remediation. Before proposing code fixes, call get_assessment_findings with the same assessment_ref, selected check_ids, and include_evidence=true, and use get_finding for general guidance. Ground fixes in the evidence and available source code; state missing evidence or unresolved code locations. Include the app_ref, assessment_ref, and finding keys.", app), nil
 	})
 
 	addWorkflowPrompt(server, &mcp.Prompt{
@@ -52,7 +52,7 @@ func registerPlatformPrompts(server *mcp.Server) {
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Assess the fleet-wide impact of the NowSecure Platform finding %s. Resolve its key with decode_nowsecure_url or search_findings, list affected apps, prioritize them by app risk, and summarize remediation from get_finding.", finding), nil
+		return fmt.Sprintf("Assess the fleet-wide impact of the NowSecure Platform finding %s. Resolve its key with decode_nowsecure_url or search_findings, list affected apps, prioritize them by app risk, and summarize remediation from get_finding. For apps selected for remediation, fetch get_assessment_findings with their app_ref, assessment_ref, check_ids, and include_evidence=true to identify the observed behavior and available code locations. State any evidence gaps.", finding), nil
 	})
 }
 

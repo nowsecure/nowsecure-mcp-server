@@ -1,8 +1,8 @@
 package nsclient
 
 // These are the compact, purpose-built shapes the client returns. They are the
-// MCP-facing contract: small, flat, and free of evidence dumps. Raw API decode
-// structs live alongside each endpoint's method and are mapped into these.
+// MCP-facing contract: compact by default, with evidence available on demand.
+// Raw API decode structs live alongside each endpoint's method.
 
 // CursorPage is cursor-based pagination metadata (portfolio, assessments).
 type CursorPage struct {
@@ -90,16 +90,42 @@ type AssessmentPage struct {
 	Page        CursorPage   `json:"page"`
 }
 
-// AssessmentFinding is a single finding, compacted (no evidence/context).
+// AssessmentFinding is a single finding, with evidence included only on demand.
 type AssessmentFinding struct {
-	CheckID        string  `json:"check_id"`
-	Title          string  `json:"title"`
-	Category       string  `json:"category,omitempty"`
-	Severity       string  `json:"severity"`
-	Affected       bool    `json:"affected"`
-	CVSS           float64 `json:"cvss,omitempty"`
-	AnalysisType   string  `json:"analysis_type,omitempty"`
-	Recommendation string  `json:"recommendation,omitempty"`
+	CheckID        string           `json:"check_id"`
+	Title          string           `json:"title"`
+	Category       string           `json:"category,omitempty"`
+	Severity       string           `json:"severity"`
+	Affected       bool             `json:"affected"`
+	CVSS           float64          `json:"cvss,omitempty"`
+	AnalysisType   string           `json:"analysis_type,omitempty"`
+	Recommendation string           `json:"recommendation,omitempty"`
+	Evidence       *FindingEvidence `json:"evidence,omitempty" jsonschema:"scan-specific paged evidence returned only with include_evidence; total_rows=0 means upstream supplied no rows, not proof of a fix"`
+}
+
+// FindingEvidence preserves the upstream evidence rows and their referenced
+// code locations. Arbitrary JSON stays decoded (rather than json.RawMessage,
+// which the MCP SDK would incorrectly describe as a byte array).
+type FindingEvidence struct {
+	Title                 string                `json:"title,omitempty"`
+	View                  string                `json:"view,omitempty"`
+	Description           string                `json:"description,omitempty"`
+	Rows                  []any                 `json:"rows" jsonschema:"one page of untruncated evidence observations; shape depends on the finding"`
+	TotalRows             int                   `json:"total_rows" jsonschema:"total evidence rows for this finding before pagination"`
+	Offset                int                   `json:"offset" jsonschema:"zero-based starting row of this evidence page"`
+	HasMore               bool                  `json:"has_more"`
+	NextOffset            int                   `json:"next_offset,omitempty" jsonschema:"when has_more is true, fetch this evidence_offset with the same assessment_ref and one check_id"`
+	Fields                any                   `json:"fields,omitempty" jsonschema:"upstream field definitions for interpreting the evidence rows"`
+	CodeLocations         []FindingCodeLocation `json:"code_locations" jsonschema:"join evidence location_id references to these ids; data preserves code, file, class, method, and line details when supplied by the scan"`
+	PDFView               any                   `json:"pdf_view,omitempty"`
+	Certificate           any                   `json:"certificate,omitempty"`
+	UnresolvedLocationIDs []string              `json:"unresolved_location_ids,omitempty" jsonschema:"referenced location ids for which the scan supplied no code-location data; do not invent source locations"`
+}
+
+// FindingCodeLocation associates an evidence location ID with the scan's code data.
+type FindingCodeLocation struct {
+	ID   string `json:"id"`
+	Data any    `json:"data"`
 }
 
 // AssessmentFindings is the compacted findings view of one assessment.
