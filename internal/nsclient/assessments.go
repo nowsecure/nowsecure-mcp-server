@@ -2,6 +2,7 @@ package nsclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
@@ -364,6 +365,9 @@ type FindingsParams struct {
 	CheckIDs         []string // optional: only these findings, with full untruncated recommendations
 	IncludeRecs      bool     // include per-row recommendations (truncated); default false
 	IncludeArtifacts bool     // include category=artifact inventory rows in the findings array; default false
+	IncludeEvidence  bool     // include evidence rows and code locations; requires explicit check_ids
+	EvidenceOffset   int      // zero-based evidence row offset; nonzero requires a single check_id
+	EvidenceLimit    int      // evidence rows per finding; default 20, max 100
 }
 
 type rawAppAssessment struct {
@@ -374,14 +378,15 @@ type rawAppAssessment struct {
 }
 
 type rawFinding struct {
-	CheckID         string  `json:"check_id"`
-	Title           string  `json:"title"`
-	Category        string  `json:"category"`
-	Severity        string  `json:"severity"`
-	Affected        bool    `json:"affected"`
-	CVSS            float64 `json:"cvss"`
-	AnalysisType    string  `json:"analysis_type"`
-	Hidden          bool    `json:"hidden"`
+	CheckID         string          `json:"check_id"`
+	Title           string          `json:"title"`
+	Category        string          `json:"category"`
+	Severity        string          `json:"severity"`
+	Affected        bool            `json:"affected"`
+	CVSS            float64         `json:"cvss"`
+	AnalysisType    string          `json:"analysis_type"`
+	Hidden          bool            `json:"hidden"`
+	Context         json.RawMessage `json:"context"`
 	Recommendations struct {
 		Developer string `json:"developer"`
 	} `json:"recommendations"`
@@ -464,13 +469,31 @@ var severityRank = map[string]int{
 
 // GetAssessmentFindings returns a compacted findings view for an assessment,
 // resolving the app ref to its platform/package/group, then to the numeric
-// analysis task, and finally stripping evidence from the report.
+// analysis task. Evidence and code locations are fetched only on request.
 func (c *Client) GetAssessmentFindings(ctx context.Context, p FindingsParams) (*AssessmentFindings, error) {
 	if p.AppRef == "" {
 		return nil, fmt.Errorf("app_ref is required")
 	}
 	if p.Limit < 0 {
 		return nil, fmt.Errorf("limit must not be negative")
+	}
+	checkSet := make(map[string]struct{}, len(p.CheckIDs))
+	for _, id := range p.CheckIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			checkSet[strings.ToLower(id)] = struct{}{}
+		}
+	}
+	if p.IncludeEvidence && len(checkSet) == 0 {
+		return nil, fmt.Errorf("include_evidence requires at least one non-empty check_id in check_ids; select findings from get_assessment_findings first")
+	}
+	if p.EvidenceOffset < 0 || p.EvidenceLimit < 0 {
+		return nil, fmt.Errorf("evidence_offset and evidence_limit must not be negative")
+	}
+	if !p.IncludeEvidence && (p.EvidenceOffset != 0 || p.EvidenceLimit != 0) {
+		return nil, fmt.Errorf("evidence_offset and evidence_limit require include_evidence=true")
+	}
+	if p.EvidenceOffset > 0 && len(checkSet) != 1 {
+		return nil, fmt.Errorf("evidence_offset requires exactly one check_id in check_ids; page each finding separately")
 	}
 	minRank := -1
 	if p.MinSeverity != "" {
@@ -518,19 +541,13 @@ func (c *Client) GetAssessmentFindings(ctx context.Context, p FindingsParams) (*
 		c.cache.set(findKey, raw)
 	}
 
-	checkSet := make(map[string]struct{}, len(p.CheckIDs))
-	for _, id := range p.CheckIDs {
-		if id = strings.TrimSpace(id); id != "" {
-			checkSet[strings.ToLower(id)] = struct{}{}
-		}
-	}
-
 	out := &AssessmentFindings{
 		AssessmentRef: assessment.Ref,
 		Report:        report,
 		Status:        assessment.TaskStatus,
 		CreatedAt:     normalizeTimestamp(assessment.Created),
 	}
+	contexts := make(map[string]json.RawMessage)
 	for _, r := range raw {
 		if r.Hidden {
 			continue
@@ -600,6 +617,9 @@ func (c *Client) GetAssessmentFindings(ctx context.Context, p FindingsParams) (*
 			AnalysisType:   r.AnalysisType,
 			Recommendation: rec,
 		})
+		if p.IncludeEvidence {
+			contexts[r.CheckID] = r.Context
+		}
 	}
 	// Sort most-severe first for triage.
 	sort.SliceStable(out.Findings, func(i, j int) bool {
@@ -607,6 +627,15 @@ func (c *Client) GetAssessmentFindings(ctx context.Context, p FindingsParams) (*
 	})
 	if p.Limit > 0 && len(out.Findings) > p.Limit {
 		out.Findings = out.Findings[:p.Limit]
+	}
+	if p.IncludeEvidence {
+		for i := range out.Findings {
+			evidence, err := c.findingEvidence(ctx, assessment.Ref, contexts[out.Findings[i].CheckID], p.EvidenceOffset, p.EvidenceLimit)
+			if err != nil {
+				return nil, fmt.Errorf("evidence for finding %q: %w", out.Findings[i].CheckID, err)
+			}
+			out.Findings[i].Evidence = evidence
+		}
 	}
 	out.TotalReturned = len(out.Findings)
 	return out, nil
