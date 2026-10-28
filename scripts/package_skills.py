@@ -48,6 +48,8 @@ def skill_files(folder):
 
 
 def package(root, output):
+    if output.resolve().is_relative_to(root.resolve()):
+        raise ValueError("Output must be outside the skill source directory")
     folders = sorted(path for path in root.iterdir() if path.is_dir())
     if not folders:
         raise ValueError("No skills found")
@@ -58,6 +60,9 @@ def package(root, output):
     unexpected = {path.name for path in output.glob("*.zip")} - expected
     if unexpected:
         raise ValueError(f"Stale ZIPs in output; use a clean output directory: {sorted(unexpected)}")
+    for name in expected | {"skill-checksums.txt"}:
+        if (output / name).is_symlink():
+            raise ValueError(f"Refusing to overwrite symlink output: {output / name}")
     checksums = []
     for folder, files in validated:
         archive = output / f"{folder.name}.zip"

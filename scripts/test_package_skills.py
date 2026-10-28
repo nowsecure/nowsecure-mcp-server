@@ -60,6 +60,30 @@ class SkillPackagingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             package(self.root, output)
 
+    def test_rejects_reference_outside_skill(self):
+        (self.root / "private.md").write_text("Must not be distributed.")
+        self.entry.write_text(self.entry.read_text().replace("guide.md", "../private.md"))
+        with self.assertRaises(ValueError):
+            skill_files(self.folder)
+
+    def test_rejects_output_inside_source(self):
+        with self.assertRaises(ValueError):
+            package(self.root, self.folder / "output")
+
+    def test_does_not_overwrite_symlink_targets(self):
+        output = Path(self.temp.name) / "out"
+        output.mkdir()
+        target = Path(self.temp.name) / "important.md"
+        target.write_text("Preserve me.")
+        for name in ["example.zip", "skill-checksums.txt"]:
+            with self.subTest(name=name):
+                link = output / name
+                link.symlink_to(target)
+                with self.assertRaises(ValueError):
+                    package(self.root, output)
+                self.assertEqual(target.read_text(), "Preserve me.")
+                link.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
