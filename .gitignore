@@ -2,6 +2,8 @@
 /nsmcp
 dist/
 /.mcpb-dist/
+/.skills-dist/
+__pycache__/
 
 # local secrets / direnv
 .envrc

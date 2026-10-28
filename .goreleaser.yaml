@@ -55,6 +55,8 @@ release:
   extra_files:
     - glob: .mcpb-dist/*.mcpb
     - glob: .mcpb-dist/mcpb-checksums.txt
+    - glob: .skills-dist/*.zip
+    - glob: .skills-dist/skill-checksums.txt
   header: |
     nsmcp is the NowSecure MCP server and CLI, exposing read-only tools for the NowSecure Platform and MARI (Mobile App Risk Intelligence) over the Model Context Protocol.
 
@@ -64,5 +66,7 @@ release:
 
     Standalone binaries are also available in the platform-specific `.tar.gz` and `.zip` archives below for other MCP clients, CLI use, and manual installation. See the [README](https://github.com/nowsecure/nowsecure-mcp-server#install) for setup instructions.
   footer: |
+    **Optional skill:** Download `nowsecure-backend-technologies.zip` for backend inventory and PHP2Shell exposure triage. It requires a separately configured NowSecure Platform MCP connection. Follow the [skill installation guide](https://github.com/nowsecure/nowsecure-mcp-server/blob/{{ .Tag }}/skills/README.md). Skill ZIP checksums are in `skill-checksums.txt`; upgrading the MCPB does not update an installed skill.
+
     > **macOS:** binaries are unsigned; if Gatekeeper blocks a downloaded binary, clear the quarantine flag:
     > `xattr -d com.apple.quarantine ./nsmcp`

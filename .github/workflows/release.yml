@@ -27,6 +27,18 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           make mcpb VERSION="$version" MCPB_STAGE=.mcpb-dist/stage MCPB_FILE=".mcpb-dist/nsmcp_${version}.mcpb"
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.15'
+          check-latest: true
+
+      - name: Build and validate skill artifacts
+        run: |
+          python -m pip install -r scripts/requirements-skills.txt
+          make test-skills skills PYTHON=python SKILLS_OUTPUT=.skills-dist
+          cd .skills-dist
+          shasum -a 256 -c skill-checksums.txt
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:

@@ -295,6 +295,10 @@ rating, and findings.
 
 ## Suggested prompts
 
+For installable workflows, see [NowSecure skills](skills/README.md), including
+backend technology inventory and PHP/CVE exposure triage from `api_hsts`
+evidence, with setup instructions for Claude Desktop, ChatGPT, and Copilot.
+
 Clients that support MCP prompts can show these workflow starters directly in
 their prompt picker. Each product mode advertises only its own prompts.
 
