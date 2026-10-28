@@ -7,6 +7,28 @@ on:
   pull_request:
 
 jobs:
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.15'
+          check-latest: true
+      - name: Install skill validation dependency
+        run: python -m pip install -r scripts/requirements-skills.txt
+      - name: Test and package skills
+        run: make test-skills skills PYTHON=python
+      - name: Verify skill checksums
+        working-directory: dist/skills
+        run: sha256sum -c skill-checksums.txt
+      - name: Upload skill preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowsecure-skills
+          path: dist/skills/
+          if-no-files-found: error
+
   build:
     runs-on: ubuntu-latest
     steps:

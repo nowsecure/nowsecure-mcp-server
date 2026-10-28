@@ -9,10 +9,19 @@ MCPB_MANIFEST := packaging/mcpb/manifest.json
 MCPB_GOCACHE ?= /private/tmp/nsmcp-mcpb-gocache
 MCPB_CHECKSUM := $(dir $(MCPB_FILE))mcpb-checksums.txt
 
-.PHONY: build mcpb test vet fmt lint run clean
+PYTHON ?= python3
+SKILLS_OUTPUT ?= dist/skills
+
+.PHONY: build mcpb skills test-skills test vet fmt lint run clean
 
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/nsmcp
+
+skills:
+	$(PYTHON) scripts/package_skills.py --output $(SKILLS_OUTPUT)
+
+test-skills:
+	$(PYTHON) -m unittest discover -s scripts -p 'test_package_skills.py'
 
 # MCPB is a single cross-platform archive: a universal macOS binary plus a
 # Windows amd64 binary selected through the manifest's platform override.
