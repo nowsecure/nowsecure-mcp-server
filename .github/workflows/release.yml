@@ -35,3 +35,76 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  claude-plugin:
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: claude-plugin-release-update
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Propose Claude plugin release update
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Do not promote prereleases or roll back on an old workflow rerun.
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Skipping non-stable tag $RELEASE_TAG"
+            exit 0
+          fi
+          latest_tag=$(gh release view --json tagName --jq .tagName)
+          if [[ "$latest_tag" != "$RELEASE_TAG" ]]; then
+            echo "Skipping $RELEASE_TAG; latest release is $latest_tag"
+            exit 0
+          fi
+          version="${RELEASE_TAG#v}"
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,assets > "$RUNNER_TEMP/claude-release.json"
+          jq -e --arg asset "nsmcp_${version}.mcpb" \
+            '.isDraft == false and .isPrerelease == false and any(.assets[]; .name == $asset and .state == "uploaded")' \
+            "$RUNNER_TEMP/claude-release.json"
+
+          branch="automation/claude-plugin-${RELEASE_TAG}"
+          existing_pr=$(gh pr list --head "$branch" --base main --state all --json number --jq 'length')
+          if [[ "$existing_pr" != 0 ]]; then
+            echo "An update PR already exists for $RELEASE_TAG"
+            exit 0
+          fi
+          # Reuse the branch if a previous attempt pushed but could not open a PR.
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            git fetch origin "$branch"
+            git switch -c "$branch" FETCH_HEAD
+          else
+            git switch -c "$branch"
+          fi
+          python3 packaging/claude/update_manifest.py "$RELEASE_TAG"
+          git diff --check
+          if ! git diff --quiet -- .claude-plugin/plugin.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add .claude-plugin/plugin.json
+            git commit -m "chore: update Claude plugin to $RELEASE_TAG"
+          fi
+          if git diff --quiet origin/main HEAD -- .claude-plugin/plugin.json; then
+            echo "Plugin already references $RELEASE_TAG"
+            exit 0
+          fi
+          git push origin "$branch"
+          cat > "$RUNNER_TEMP/claude-plugin-pr.md" <<EOF
+          Update the Claude plugin version and pinned MCPB URL to the published $RELEASE_TAG release.
+
+          The release workflow verified that the stable release contains the expected MCPB asset. Validate with \`claude plugin validate . --profile directory --strict\` before merging. PRs created with GITHUB_TOKEN do not automatically trigger PR workflows.
+          EOF
+          gh pr create --base main --head "$branch" \
+            --title "chore: update Claude plugin to $RELEASE_TAG" \
+            --body-file "$RUNNER_TEMP/claude-plugin-pr.md"
