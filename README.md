@@ -23,6 +23,47 @@ That's it—the bundle includes nsmcp and configures it for you. There is no
 separate binary to install and no JSON to edit. It supports macOS (Apple
 silicon and Intel) and Windows x64.
 
+### Claude plugin
+
+The repository root is also a Claude plugin, declared in
+[`.claude-plugin/plugin.json`](.claude-plugin/plugin.json). It references the
+published **v0.1.8 MCPB bundle**, which includes the server binaries for macOS
+(Apple silicon and Intel) and Windows x64. Linux users should use the manual
+MCP setup below. Use a Claude client that supports MCPB URLs in plugin
+manifests; this is a local server, not a hosted web connector.
+
+When configuring the bundle, select `platform` for your own mobile apps or
+`mari` for third-party app risk intelligence and provide your NowSecure API
+token in the sensitive credential field. An authorized NowSecure account
+with access to the selected product is required. No separate `nsmcp`
+installation is needed. Avoid also enabling a manual MCP entry for the same
+product, which would expose duplicate tools.
+
+For the Claude plugin submission form, use:
+
+- **Repository:** `https://github.com/nowsecure/nowsecure-mcp-server`
+- **Plugin path:** leave empty (repository root)
+- **Branch or tag:** the branch containing this manifest while reviewing;
+  leave empty to track the default branch after the PR is merged.
+
+Click **Validate** again after the manifest is available on the selected
+branch. This addresses the missing `plugin.json` check; the directory's
+remaining checks and review still apply.
+
+Maintainers can check a clean checkout with
+`claude plugin validate . --profile directory --strict`.
+To test locally, use a clean checkout and launch `claude --plugin-dir .`,
+then inspect `/mcp` and try a read-only query for the configured product.
+A clean checkout avoids loading a developer's ignored, project-local
+`.mcp.json` alongside the plugin's server.
+
+The bundle URL is pinned so a plugin version uses a specific server release.
+When updating it, publish the MCPB release first, update the URL and plugin
+version together, and revalidate. The plugin runs the released binary,
+not unreleased Go source on the selected branch.
+The listing icon in `.claude-plugin/icon.png` is the
+[official NowSecure website icon](https://www.nowsecure.com/wp-content/uploads/2018/12/cropped-Image-from-iOS.png).
+
 ## One-click Platform install
 
 Pick your client below — each button uses the client's native install link to
