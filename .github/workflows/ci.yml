@@ -27,6 +27,9 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      - name: Test Claude plugin release updater
+        run: python3 -m unittest discover -s packaging/claude -p 'test_*.py'
+
   lint:
     runs-on: ubuntu-latest
     steps:

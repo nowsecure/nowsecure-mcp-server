@@ -1,0 +1,14 @@
+{
+  "name": "nowsecure",
+  "version": "0.1.8",
+  "description": "Review NowSecure Platform and MARI mobile app security data with read-only MCP tools. Requires an authorized NowSecure account. Supports macOS and Windows x64.",
+  "author": {
+    "name": "NowSecure",
+    "url": "https://www.nowsecure.com/"
+  },
+  "homepage": "https://github.com/nowsecure/nowsecure-mcp-server#readme",
+  "repository": "https://github.com/nowsecure/nowsecure-mcp-server",
+  "license": "LicenseRef-NowSecure-Customer-Use",
+  "keywords": ["nowsecure", "mobile-security", "devsecops", "risk-intelligence", "mari"],
+  "mcpServers": "https://github.com/nowsecure/nowsecure-mcp-server/releases/download/v0.1.8/nsmcp_0.1.8.mcpb"
+}

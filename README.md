@@ -23,6 +23,12 @@ That's it—the bundle includes nsmcp and configures it for you. There is no
 separate binary to install and no JSON to edit. It supports macOS (Apple
 silicon and Intel) and Windows x64.
 
+### Claude plugin
+
+The repository includes a Claude plugin backed by the published MCPB bundle.
+See the [Claude plugin guide](docs/claude-plugin.md) for setup, directory
+submission, validation, and automated release updates.
+
 ## One-click Platform install
 
 Pick your client below — each button uses the client's native install link to
